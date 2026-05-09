@@ -9,6 +9,7 @@ from pathlib import Path
 from src.models import Trade
 from src.config import config
 from src.writer._helpers import _ensure, _trades_dir, _daily_dir, _pnl_emoji
+from src.writer.charts import _mermaid_trade_timeline
 
 
 def write_trade_note(trade: Trade) -> Path:
@@ -17,6 +18,7 @@ def write_trade_note(trade: Trade) -> Path:
 
     frontmatter = f"""---
 symbol: {trade.symbol}
+account: {trade.account_name}
 date: {trade.date_str}
 direction: {trade.direction}
 entry_price: {trade.entry_price}
@@ -32,6 +34,7 @@ exit_role: {trade.exit_role}
 entry_commission: {round(trade.entry_commission, 6)}
 exit_commission: {round(trade.exit_commission, 6)}
 total_commission: {round(trade.total_commission, 6)}
+funding_fees: {round(trade.funding_fees, 6)}
 gst_in_commission: {round(trade.gst_in_commission, 6)}
 net_fee_excl_gst: {round(trade.net_fee_excl_gst, 6)}
 entry_notional: {round(trade.entry_notional, 6)}
@@ -54,11 +57,16 @@ tags: [trade, {trade.symbol.lower()}, {trade.direction}, {"winner" if trade.is_w
 
 | Field | Value |
 |---|---|
+| **Account** | `{trade.account_name}` |
 | **Symbol** | `{trade.symbol}` |
 | **Direction** | {trade.direction.upper()} |
 | **Size** | {trade.size} contracts |
 | **Settling Asset** | {trade.settling_asset} |
 | **Hold Time** | {trade.hold_duration_minutes} minutes |
+
+## Timeline
+
+{_mermaid_trade_timeline(trade)}
 
 ## Entry
 
@@ -85,6 +93,7 @@ tags: [trade, {trade.symbol.lower()}, {trade.direction}, {"winner" if trade.is_w
 | Metric | Value |
 |---|---|
 | **Gross P&L** | `{round(trade.gross_pnl, 4)}` {trade.settling_asset} |
+| **Funding Fees** | `{round(trade.funding_fees, 6)}` {trade.settling_asset} |
 | **Base Fee** | `{round(trade.net_fee_excl_gst, 6)}` {trade.settling_asset} |
 | **GST on Fee (18%)** | `{round(trade.gst_in_commission, 6)}` {trade.settling_asset} |
 | **Total Commission** | `{round(trade.total_commission, 6)}` {trade.settling_asset} |

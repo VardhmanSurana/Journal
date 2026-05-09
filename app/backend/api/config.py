@@ -20,6 +20,13 @@ class Config:
         self.DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./app.db")
         self.INCOME_TAX_SLAB: float = float(os.getenv("INCOME_TAX_SLAB", "0.30"))
         self.PAGE_LIMIT: int = int(os.getenv("PAGE_LIMIT", "100"))
+        
+        # Automation & Alerts
+        self.WEBHOOK_URL: str = os.getenv("WEBHOOK_URL", "")
+        self.PNL_ALERT_THRESHOLD: float = float(os.getenv("PNL_ALERT_THRESHOLD", "100.0"))
+        
+        # External APIs
+        self.CRYPTOCOMPARE_API_KEY: str = os.getenv("CRYPTOCOMPARE_API_KEY", "")
 
     @property
     def base_url(self) -> str:

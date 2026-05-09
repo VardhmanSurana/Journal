@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select, text
 from typing import List, Dict, Any
+from datetime import datetime
+from pydantic import BaseModel
 from api.database import get_session
-from api.models import Trade, Fill, TradeEvent, DashboardSummary, APIFill
-from api.client import fetch_fills, fetch_wallet_balance
+from api.models import Trade, Fill, TradeEvent, DashboardSummary, APIFill, DailyReview, PriceAlert
+from api.client import fetch_fills, fetch_wallet_balance, fetch_positions, fetch_tickers, fetch_news, fetch_rss_news
 from api.config import config
 
 router = APIRouter()
@@ -168,6 +170,22 @@ def sync_trades(session: Session = Depends(get_session)):
             
     session.commit()
     reconstruct_trades_from_db(session)
+    
+    # Check for large P&L trades to trigger webhooks
+    if config.WEBHOOK_URL:
+        import requests
+        newly_closed_trades = session.exec(
+            select(Trade).where(Trade.is_open == False).order_by(Trade.exit_time.desc())
+        ).all()
+        
+        for t in newly_closed_trades[:new_fills_count]: # Rough check for new ones
+            if abs(t.net_profit) >= config.PNL_ALERT_THRESHOLD:
+                try:
+                    msg = f"🚀 Large P&L Detected! {t.symbol} {t.direction.upper()}: ${t.net_profit:.2f}"
+                    requests.post(config.WEBHOOK_URL, json={"text": msg}, timeout=5)
+                except Exception as e:
+                    print(f"Webhook failed: {e}")
+
     return {"status": "success", "new_fills_synced": new_fills_count}
 
 @router.get("/trades")
@@ -261,3 +279,536 @@ def get_summary(session: Session = Depends(get_session)):
         pnl_by_symbol=pnl_by_symbol,
         wallet=wallet_data
     )
+
+
+@router.get("/positions")
+def get_positions():
+    """Get current open positions with unrealized P&L."""
+    from api.client import fetch_positions, fetch_tickers
+    
+    # Try common underlying assets
+    common_assets = ["BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "MATIC", "AVAX"]
+    all_positions = []
+    
+    for asset in common_assets:
+        try:
+            positions = fetch_positions(asset)
+            if positions:
+                all_positions.extend(positions)
+        except:
+            pass
+    
+    # Get tickers for all symbols
+    try:
+        tickers = {t.get("symbol"): t for t in fetch_tickers(",".join(common_assets))}
+    except:
+        tickers = {}
+    
+    result = []
+    for pos in all_positions:
+        symbol = pos.get("product_symbol", "")
+        ticker = tickers.get(symbol, {})
+        
+        result.append({
+            "symbol": symbol,
+            "size": pos.get("size", 0),
+            "entry_price": pos.get("entry_price", 0),
+            "mark_price": ticker.get("mark_price", pos.get("mark_price", 0)),
+            "unrealized_pnl": pos.get("unrealized_pnl", 0),
+            "margin_used": pos.get("margin_used", 0),
+            "leverage": pos.get("leverage", 0),
+            "side": pos.get("side", ""),
+            "liq_price": pos.get("liq_price", 0),
+        })
+    
+    return result
+
+
+@router.get("/risk")
+def get_risk_metrics(session: Session = Depends(get_session)):
+    """Get comprehensive risk metrics."""
+    trades = session.exec(select(Trade).where(Trade.is_open == False).order_by(Trade.exit_time.asc())).all()
+    positions_data = fetch_positions()
+    wallet_data = fetch_wallet_balance()
+    tickers = fetch_tickers()
+    
+    if not trades:
+        return {
+            "sharpe_ratio": 0,
+            "sortino_ratio": 0,
+            "calmar_ratio": 0,
+            "win_loss_streak": 0,
+            "max_consecutive_wins": 0,
+            "max_consecutive_losses": 0,
+            "win_loss_distribution": [],
+            "portfolio_exposure": [],
+            "margin_utilization": 0,
+            "total_equity": 0,
+        }
+    
+    # Calculate equity for risk-free rate (assume 5% annual)
+    returns = [t.net_profit for t in trades]
+    avg_return = sum(returns) / len(returns) if returns else 0
+    std_dev = (sum((r - avg_return) ** 2 for r in returns) / len(returns)) ** 0.5 if returns else 1
+    
+    # Sharpe Ratio (annualized, 252 trading days)
+    risk_free_rate = 0.05 / 252
+    sharpe_ratio = ((avg_return - risk_free_rate) / std_dev * (252 ** 0.5)) if std_dev > 0 else 0
+    
+    # Sortino Ratio (downside deviation only)
+    negative_returns = [r for r in returns if r < 0]
+    downside_dev = (sum(r ** 2 for r in negative_returns) / len(returns)) ** 0.5 if negative_returns else 1
+    sortino_ratio = ((avg_return - risk_free_rate) / downside_dev * (252 ** 0.5)) if downside_dev > 0 else 0
+    
+    # Calmar Ratio (max drawdown / annual return)
+    cumulative = 0
+    peak = 0
+    max_dd = 0
+    for r in returns:
+        cumulative += r
+        if cumulative > peak:
+            peak = cumulative
+        dd = peak - cumulative
+        if dd > max_dd:
+            max_dd = dd
+    
+    annual_return = avg_return * 252
+    calmar_ratio = annual_return / max_dd if max_dd > 0 else 0
+    
+    # Win/Loss Streaks
+    max_wins = 0
+    max_losses = 0
+    current_wins = 0
+    current_losses = 0
+    for t in trades:
+        if t.is_winner:
+            current_wins += 1
+            current_losses = 0
+            if current_wins > max_wins:
+                max_wins = current_wins
+        else:
+            current_losses += 1
+            current_wins = 0
+            if current_losses > max_losses:
+                max_losses = current_losses
+    
+    # Win/Loss Distribution (histogram buckets)
+    buckets = [
+        {"range": "<-$500", "count": 0},
+        {"range": "-$500 to -$100", "count": 0},
+        {"range": "-$100 to $0", "count": 0},
+        {"range": "$0 to $100", "count": 0},
+        {"range": "$100 to $500", "count": 0},
+        {"range": ">$500", "count": 0},
+    ]
+    for t in trades:
+        pnl = t.net_profit
+        if pnl < -500:
+            buckets[0]["count"] += 1
+        elif pnl < -100:
+            buckets[1]["count"] += 1
+        elif pnl < 0:
+            buckets[2]["count"] += 1
+        elif pnl < 100:
+            buckets[3]["count"] += 1
+        elif pnl < 500:
+            buckets[4]["count"] += 1
+        else:
+            buckets[5]["count"] += 1
+    
+    # Portfolio exposure by symbol
+    exposure = {}
+    for pos in positions_data:
+        symbol = pos.get("product_symbol", "UNKNOWN")
+        size = abs(pos.get("size", 0))
+        notional = pos.get("notional", 0)
+        exposure[symbol] = exposure.get(symbol, 0) + notional
+    
+    # Margin utilization
+    total_equity = sum(float(w.get("balance", 0)) for w in wallet_data)
+    total_margin = sum(float(p.get("margin_used", 0)) for p in positions_data)
+    margin_util = (total_margin / total_equity * 100) if total_equity > 0 else 0
+    
+    return {
+        "sharpe_ratio": round(sharpe_ratio, 2),
+        "sortino_ratio": round(sortino_ratio, 2),
+        "calmar_ratio": round(calmar_ratio, 2),
+        "max_drawdown": round(max_dd, 2),
+        "annual_return_pct": round(annual_return / total_equity * 100 if total_equity else 0, 2),
+        "win_loss_streak": current_wins if current_wins > current_losses else -current_losses,
+        "max_consecutive_wins": max_wins,
+        "max_consecutive_losses": max_losses,
+        "win_loss_distribution": buckets,
+        "portfolio_exposure": [{"symbol": k, "notional": round(v, 2)} for k, v in exposure.items()],
+        "margin_utilization": round(margin_util, 2),
+        "total_equity": round(total_equity, 2),
+    }
+
+
+@router.get("/tax/export")
+def export_tax_report(session: Session = Depends(get_session)):
+    """Export tax report as CSV for CA/audit."""
+    import csv
+    import io
+    
+    trades = session.exec(select(Trade).where(Trade.is_open == False).order_by(Trade.exit_time.asc())).all()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow([
+        "Symbol", "Entry Date", "Exit Date", "Direction", "Size",
+        "Entry Price", "Exit Price", "Gross P&L", "Fees", "GST",
+        "Net P&L", "Income Tax", "After Tax P&L", "Holding Days",
+        "Strategy", "Result"
+    ])
+    
+    total_turnover = 0
+    total_gross_pnl = 0
+    total_tax = 0
+    
+    for t in trades:
+        entry_date = t.entry_time.strftime("%Y-%m-%d") if t.entry_time else ""
+        exit_date = t.exit_time.strftime("%Y-%m-%d") if t.exit_time else ""
+        holding_days = round((t.exit_time - t.entry_time).total_seconds() / 86400, 1) if t.exit_time and t.entry_time else 0
+        
+        turnover = abs(t.gross_profit) if t.gross_profit else 0
+        total_turnover += turnover
+        total_gross_pnl += t.gross_profit or 0
+        total_tax += t.after_tax_profit - t.net_profit if t.after_tax_profit else 0
+        
+        writer.writerow([
+            t.symbol, entry_date, exit_date, t.direction, t.size,
+            round(t.avg_entry, 4), round(t.avg_exit, 4),
+            round(t.gross_profit or 0, 2), round(t.fees or 0, 2), round(t.gst or 0, 2),
+            round(t.net_profit or 0, 2), round((t.after_tax_profit - t.net_profit), 2) if t.after_tax_profit else 0,
+            round(t.after_tax_profit or 0, 2), holding_days,
+            t.strategy or "", t.result or ""
+        ])
+    
+    # Summary rows
+    writer.writerow([])
+    writer.writerow(["SUMMARY"])
+    writer.writerow(["Total Trades", len(trades)])
+    writer.writerow(["Total Turnover (for Audit)", round(total_turnover, 2)])
+    writer.writerow(["Gross P&L", round(total_gross_pnl, 2)])
+    writer.writerow(["Total Estimated Tax", round(total_tax, 2)])
+    
+    csv_content = output.getvalue()
+    return {"csv": csv_content, "filename": f"tax_report_{datetime.now().strftime('%Y%m%d')}.csv"}
+
+
+@router.get("/tax/summary")
+def get_tax_summary(session: Session = Depends(get_session)):
+    """Get annual tax summary for compliance."""
+    trades = session.exec(select(Trade).where(Trade.is_open == False).order_by(Trade.exit_time.asc())).all()
+    
+    # Group by year
+    by_year = {}
+    for t in trades:
+        if t.exit_time:
+            year = t.exit_time.year
+            if year not in by_year:
+                by_year[year] = {"trades": 0, "turnover": 0, "gross_pnl": 0, "fees": 0, "tax": 0, "after_tax": 0, "net_profit": 0}
+            
+            by_year[year]["trades"] += 1
+            by_year[year]["turnover"] += abs(t.gross_profit) if t.gross_profit else 0
+            by_year[year]["gross_pnl"] += t.gross_profit or 0
+            by_year[year]["fees"] += t.fees or 0
+            by_year[year]["net_profit"] += t.net_profit or 0
+            tax = (t.after_tax_profit - t.net_profit) if t.after_tax_profit else 0
+            by_year[year]["tax"] += tax
+            by_year[year]["after_tax"] += t.after_tax_profit or 0
+    
+    # Check for audit threshold (₹10Cr = 10,00,00,000 INR)
+    audit_threshold = 10000000  # 10Cr INR in USD (approx)
+    
+    result = []
+    accumulated_loss = 0
+    for year in sorted(by_year.keys()):
+        data = by_year[year]
+        
+        # Loss carry-forward logic:
+        # Current year taxable profit can be reduced by accumulated losses from previous 4 years
+        taxable_pnl = max(0, data["net_profit"] - accumulated_loss)
+        
+        # Update accumulated loss for next year
+        if data["net_profit"] < 0:
+            accumulated_loss += abs(data["net_profit"])
+        else:
+            accumulated_loss = max(0, accumulated_loss - data["net_profit"])
+
+        result.append({
+            "year": year,
+            "trades": data["trades"],
+            "turnover": round(data["turnover"], 2),
+            "gross_pnl": round(data["gross_pnl"], 2),
+            "total_fees": round(data["fees"], 2),
+            "estimated_tax": round(data["tax"], 2),
+            "profit_after_tax": round(data["after_tax"], 2),
+            "audit_required": data["turnover"] >= audit_threshold,
+            "losses_carried_forward": round(accumulated_loss, 2)
+        })
+    
+    return result
+
+
+@router.put("/trades/{trade_id}")
+def update_trade(trade_id: int, updates: dict, session: Session = Depends(get_session)):
+    """Update trade with journal details (strategy, emotion, notes, etc)."""
+    trade = session.get(Trade, trade_id)
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    
+    if "strategy" in updates:
+        trade.strategy = updates["strategy"]
+    if "emotion" in updates:
+        trade.emotion = updates["emotion"]
+    if "notes" in updates:
+        trade.notes = updates["notes"]
+    if "mistakes" in updates:
+        trade.mistakes = updates["mistakes"]
+    if "session" in updates:
+        trade.session = updates["session"]
+    if "discipline_score" in updates:
+        trade.discipline_score = updates["discipline_score"]
+    if "confidence_score" in updates:
+        trade.confidence_score = updates["confidence_score"]
+    if "pre_plan" in updates:
+        trade.pre_plan = updates["pre_plan"]
+    if "risk_pct" in updates:
+        trade.risk_pct = updates["risk_pct"]
+    if "stop_loss" in updates:
+        trade.stop_loss = updates["stop_loss"]
+    if "take_profit" in updates:
+        trade.take_profit = updates["take_profit"]
+    
+    # Calculate actual risk % if stop loss is set
+    if trade.stop_loss and trade.avg_entry and trade.size:
+        try:
+            risk_per_unit = abs(trade.avg_entry - trade.stop_loss)
+            total_risk_amount = risk_per_unit * trade.size
+            
+            # Fetch total equity for % calculation
+            wallet = fetch_wallet_balance()
+            total_equity = sum(float(w.get("balance", 0)) for w in wallet)
+            
+            if total_equity > 0:
+                trade.actual_risk_pct = round((total_risk_amount / total_equity) * 100, 2)
+        except:
+            pass
+
+    session.add(trade)
+    session.commit()
+    session.refresh(trade)
+    
+    return {"status": "success", "trade_id": trade_id}
+
+
+# === Daily Reviews CRUD ===
+
+@router.get("/reviews")
+def get_daily_reviews(session: Session = Depends(get_session)):
+    """Get all daily reviews."""
+    reviews = session.exec(select(DailyReview).order_by(DailyReview.date_str.desc())).all()
+    return [
+        {
+            "id": r.id,
+            "date_str": r.date_str,
+            "mood": r.mood,
+            "discipline_score": r.discipline_score,
+            "mistakes": r.mistakes,
+            "lessons": r.lessons
+        }
+        for r in reviews
+    ]
+
+
+@router.post("/reviews")
+def create_daily_review(review: dict, session: Session = Depends(get_session)):
+    """Create or update daily review."""
+    existing = session.exec(
+        select(DailyReview).where(DailyReview.date_str == review.get("date_str"))
+    ).first()
+    
+    if existing:
+        existing.mood = review.get("mood", existing.mood)
+        existing.discipline_score = review.get("discipline_score", existing.discipline_score)
+        existing.mistakes = review.get("mistakes", existing.mistakes)
+        existing.lessons = review.get("lessons", existing.lessons)
+        session.add(existing)
+        session.commit()
+        return {"status": "updated", "id": existing.id}
+    else:
+        new_review = DailyReview(
+            date_str=review["date_str"],
+            mood=review.get("mood"),
+            discipline_score=review.get("discipline_score"),
+            mistakes=review.get("mistakes", ""),
+            lessons=review.get("lessons", "")
+        )
+        session.add(new_review)
+        session.commit()
+        return {"status": "created", "id": new_review.id}
+
+
+@router.delete("/reviews/{review_id}")
+def delete_daily_review(review_id: int, session: Session = Depends(get_session)):
+    """Delete daily review."""
+    review = session.get(DailyReview, review_id)
+    if review:
+        session.delete(review)
+        session.commit()
+    return {"status": "deleted"}
+
+
+# === Alerts & Notifications ===
+
+class AlertSettings(BaseModel):
+    pnl_threshold: float = 100.0
+    drawdown_threshold: float = 5.0
+    sync_interval_minutes: int = 60
+
+
+@router.get("/alerts/settings")
+def get_alert_settings():
+    """Get alert configuration."""
+    return {
+        "pnl_threshold": 100.0,
+        "drawdown_threshold": 5.0,
+        "sync_interval_minutes": 60,
+        "last_alert_time": None
+    }
+
+
+@router.get("/alerts")
+def get_alerts(session: Session = Depends(get_session)):
+    return session.exec(select(PriceAlert).order_by(PriceAlert.created_at.desc())).all()
+
+@router.post("/alerts")
+def create_alert(alert: PriceAlert, session: Session = Depends(get_session)):
+    session.add(alert)
+    session.commit()
+    session.refresh(alert)
+    return alert
+
+@router.delete("/alerts/{alert_id}")
+def delete_alert(alert_id: int, session: Session = Depends(get_session)):
+    alert = session.get(PriceAlert, alert_id)
+    if alert:
+        session.delete(alert)
+        session.commit()
+    return {"status": "deleted"}
+
+@router.post("/alerts/check")
+def check_alerts(session: Session = Depends(get_session)):
+    """Check if any alert thresholds are triggered."""
+    trades = session.exec(select(Trade).where(Trade.is_open == False).order_by(Trade.exit_time.desc())).all()
+    positions = fetch_positions()
+    active_alerts = session.exec(select(PriceAlert).where(PriceAlert.is_active == True)).all()
+    
+    alerts_triggered = []
+    
+    # 1. Check Price Alerts (Live Tickers)
+    if active_alerts:
+        symbols = list(set([a.symbol for a in active_alerts]))
+        try:
+            tickers = {t.get("symbol"): t for t in fetch_tickers(",".join(symbols))}
+            for alert in active_alerts:
+                ticker = tickers.get(alert.symbol)
+                if not ticker: continue
+                
+                mark_price = float(ticker.get("mark_price", 0))
+                triggered = False
+                if alert.condition == "ABOVE" and mark_price >= alert.target_price:
+                    triggered = True
+                elif alert.condition == "BELOW" and mark_price <= alert.target_price:
+                    triggered = True
+                
+                if triggered:
+                    alert.is_active = False
+                    alert.triggered_at = datetime.now(timezone.utc)
+                    session.add(alert)
+                    
+                    msg = f"🔔 ALERT: {alert.symbol} is {alert.condition} {alert.target_price}! Current: {mark_price}"
+                    alerts_triggered.append({"type": "price_alert", "message": msg})
+                    
+                    if config.WEBHOOK_URL:
+                        import requests
+                        try:
+                            requests.post(config.WEBHOOK_URL, json={"text": msg}, timeout=5)
+                        except: pass
+        except Exception as e:
+            print(f"Price alert check failed: {e}")
+    
+    # 2. Check latest trade P&L
+    if trades:
+        latest = trades[0]
+        if abs(latest.net_profit) >= config.PNL_ALERT_THRESHOLD:
+            alerts_triggered.append({
+                "type": "large_pnl",
+                "message": f"Large {'profit' if latest.net_profit > 0 else 'loss'}: ${latest.net_profit:.2f}",
+                "severity": "high" if abs(latest.net_profit) >= 500 else "medium"
+            })
+    
+    # 3. Check open positions
+    for pos in positions:
+        pnl = pos.get("unrealized_pnl", 0)
+        if abs(pnl) >= 200:
+            alerts_triggered.append({
+                "type": "position_pnl",
+                "message": f"{pos.get('product_symbol')} unrealized P&L: ${pnl:.2f}",
+                "severity": "high" if abs(pnl) >= 500 else "medium"
+            })
+    
+    session.commit()
+    return {"alerts": alerts_triggered, "checked_at": datetime.now().isoformat()}
+
+
+# === Sync with background ===
+
+@router.get("/news")
+def get_market_news(categories: str = "BTC,ETH,Trading"):
+    """Aggregate market news from CryptoCompare and direct RSS feeds."""
+    import time
+    
+    # 1. Primary Source: CryptoCompare
+    cc_news = fetch_news(categories)
+    formatted_news = []
+    
+    for item in cc_news:
+        formatted_news.append({
+            "id": item.get("id"),
+            "source": item.get("source_info", {}).get("name", "Unknown"),
+            "title": item.get("title"),
+            "url": item.get("url"),
+            "time": item.get("published_on"),
+            "body": item.get("body", "")[:200] + "...",
+            "image": item.get("imageurl"),
+            "type": "ARTICLE"
+        })
+        
+    # 2. Secondary Source: RSS (Fallback/Extra)
+    rss_news = fetch_rss_news()
+    for item in rss_news:
+        # Convert published_parsed to unix timestamp if possible
+        ts = int(time.time())
+        if item["published_on"]:
+            ts = int(time.mktime(item["published_on"]))
+            
+        formatted_news.append({
+            "id": item["id"],
+            "source": item["source"],
+            "title": item["title"],
+            "url": item["url"],
+            "time": ts,
+            "body": item["body"],
+            "image": item["imageurl"],
+            "type": "RSS"
+        })
+        
+    # Sort by time descending
+    formatted_news.sort(key=lambda x: x["time"], reverse=True)
+    
+    return formatted_news[:25] # Return top 25 latest items

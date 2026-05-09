@@ -32,6 +32,24 @@ class Config:
     def __init__(self) -> None:
         self.API_KEY: str = os.getenv("DELTA_API_KEY", "")
         self.API_SECRET: str = os.getenv("DELTA_API_SECRET", "")
+        
+        # Support for multiple accounts via DELTA_ACCOUNTS=[{"name": "Main", "key": "...", "secret": "..."}, ...]
+        import json
+        accounts_env = os.getenv("DELTA_ACCOUNTS")
+        if accounts_env:
+            try:
+                self.ACCOUNTS = json.loads(accounts_env)
+            except json.JSONDecodeError:
+                self.ACCOUNTS = []
+        else:
+            self.ACCOUNTS = []
+            if self.API_KEY and self.API_SECRET:
+                self.ACCOUNTS.append({
+                    "name": os.getenv("DELTA_ACCOUNT_NAME", "Default"),
+                    "key": self.API_KEY,
+                    "secret": self.API_SECRET
+                })
+
         self.GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
         
         # Vertex AI settings

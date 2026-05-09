@@ -4,13 +4,13 @@ export const CurrencyToggle = () => {
   const { currency, setCurrency } = useCurrency()
 
   return (
-    <div className="flex items-center gap-3 bg-slate-800/50 p-1.5 rounded-full border border-slate-700">
+    <div className="flex items-center gap-3 bg-zinc-800/50 p-1.5 rounded-full border border-zinc-700">
       <button
         onClick={() => setCurrency('USD')}
         className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
           currency === 'USD'
-            ? 'bg-blue-600 text-white shadow-lg'
-            : 'text-slate-400 hover:text-slate-200'
+            ? 'bg-zinc-100 text-zinc-950 shadow-lg'
+            : 'text-zinc-500 hover:text-zinc-200'
         }`}
       >
         USD
@@ -19,8 +19,8 @@ export const CurrencyToggle = () => {
         onClick={() => setCurrency('INR')}
         className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
           currency === 'INR'
-            ? 'bg-blue-600 text-white shadow-lg'
-            : 'text-slate-400 hover:text-slate-200'
+            ? 'bg-zinc-100 text-zinc-950 shadow-lg'
+            : 'text-zinc-500 hover:text-zinc-200'
         }`}
       >
         INR

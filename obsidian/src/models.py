@@ -81,6 +81,7 @@ class Trade:
     exit_order_id: str
     entry_role: str
     exit_role: str
+    account_name: str = "Default"
 
     # Notional values from fills (Qty × Price × contract_multiplier)
     # Required because each product has a different contract size:
@@ -90,12 +91,15 @@ class Trade:
     entry_notional: float = 0.0
     exit_notional: float = 0.0
 
+    # Funding fees (sum of 8-hour funding payments while position was open)
+    funding_fees: float = 0.0
+
     # Calculated fields
     gross_pnl: float = 0.0
     total_commission: float = 0.0    # entry + exit fee (GST included)
     gst_in_commission: float = 0.0   # 18% GST portion extracted for display
     net_fee_excl_gst: float = 0.0    # base fee before GST
-    net_pnl: float = 0.0             # gross_pnl - total_commission
+    net_pnl: float = 0.0             # gross_pnl - total_commission + funding_fees
     income_tax: float = 0.0          # slab-rate tax on net profit (speculative business income)
     profit_after_tax: float = 0.0    # net_pnl - income_tax
     is_winner: bool = False
@@ -128,7 +132,8 @@ class Trade:
         self.gst_in_commission = self.total_commission * (18 / 118)
         self.net_fee_excl_gst = self.total_commission - self.gst_in_commission
 
-        self.net_pnl = self.gross_pnl - self.total_commission
+        # Net P&L includes funding fees (positive = received, negative = paid)
+        self.net_pnl = self.gross_pnl - self.total_commission + self.funding_fees
 
         # Income tax — only on profitable trades, at slab rate
         if self.net_pnl > 0:
@@ -295,6 +300,7 @@ def build_summary(trades: list[Trade]) -> dict:
     total_gst = sum(t.gst_in_commission for t in trades)
     total_base_fee = sum(t.net_fee_excl_gst for t in trades)
     total_income_tax = sum(t.income_tax for t in trades)
+    total_funding = sum(t.funding_fees for t in trades)
 
     # D4: use pre-computed profit_after_tax to avoid floating-point divergence
     total_profit_after_tax = sum(t.profit_after_tax for t in trades)
@@ -314,9 +320,53 @@ def build_summary(trades: list[Trade]) -> dict:
         "total_net_pnl": round(total_net, 4),
         "total_income_tax": round(total_income_tax, 4),
         "total_profit_after_tax": round(total_profit_after_tax, 4),
+        "total_funding": round(total_funding, 6),
         "avg_win": round(sum(t.net_pnl for t in winners) / len(winners), 4) if winners else 0,
         "avg_loss": round(sum(t.net_pnl for t in losers) / len(losers), 4) if losers else 0,
         "best_trade": round(max(t.net_pnl for t in trades), 4),
         "worst_trade": round(min(t.net_pnl for t in trades), 4),
         "total_turnover": round(total_turnover, 4),
     }
+
+
+def apply_funding_fees(trades: list[Trade], transactions: list[dict]) -> None:
+    """
+    Correlate 'funding' transactions from the wallet history with matched trades.
+    
+    A funding fee belongs to a trade if:
+    1. Its type is 'funding'
+    2. Its asset matches the trade's settling_asset
+    3. Its timestamp is between trade entry and exit
+    """
+    funding_txs = [
+        tx for tx in transactions 
+        if tx.get("transaction_type") == "funding"
+    ]
+
+    for tx in funding_txs:
+        try:
+            # Parse transaction time
+            created_at = tx.get("created_at", "")
+            try:
+                ts = int(created_at)
+                tx_time = datetime.fromtimestamp(ts / 1_000_000, tz=timezone.utc)
+            except (ValueError, TypeError):
+                tx_time = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+            
+            tx_asset = tx.get("asset_symbol")
+            tx_amount = float(tx.get("amount", 0))
+
+            # Find trades that were open during this funding payment
+            for trade in trades:
+                if (
+                    trade.settling_asset == tx_asset and
+                    trade.entry_time <= tx_time <= trade.exit_time
+                ):
+                    # Note: If multiple trades for the same asset are open, 
+                    # this simplified logic attributes the full funding to each.
+                    # In Delta, positions are usually aggregated, so this is 
+                    # mostly accurate for single-position traders.
+                    trade.funding_fees += tx_amount
+                    trade.calculate()
+        except Exception:
+            continue

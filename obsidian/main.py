@@ -13,8 +13,8 @@ from rich.console import Console
 from rich.table import Table
 
 from src.config import config
-from src.client import fetch_fills, fetch_wallet_balance
-from src.models import Fill, match_trades, build_summary
+from src.client import fetch_fills, fetch_wallet_balance, fetch_wallet_transactions
+from src.models import Fill, match_trades, build_summary, apply_funding_fees
 from src.writer import write_trade_note, write_dashboard, write_daily_notes, write_templater_template
 from src import db
 
@@ -54,34 +54,53 @@ def main() -> None:
 
     console.rule("[bold blue]Delta Journal — Phase 1[/]")
     console.print(f"Vault: [cyan]{config.VAULT_PATH}[/]")
-    console.print(f"Region: [cyan]{config.REGION}[/]")
+    console.print(f"Accounts: [cyan]{', '.join(a['name'] for a in config.ACCOUNTS)}[/]")
     console.print(f"Income tax slab: [cyan]{int(config.INCOME_TAX_SLAB * 100)}%[/]")
     console.print()
 
-    # ── Fetch fills ──────────────────────────────────────────────────────────
-    with console.status("Fetching fills from Delta Exchange..."):
-        raw_fills = fetch_fills()
+    all_trades: list[Trade] = []
+    total_wallet = []
 
-    if args.limit:
-        raw_fills = raw_fills[: args.limit]
+    for account in config.ACCOUNTS:
+        name = account["name"]
+        key = account["key"]
+        secret = account["secret"]
 
-    console.print(f"[green]✓[/] Fetched [bold]{len(raw_fills)}[/] fills")
+        console.print(f"[bold magenta]Syncing Account: {name}...[/]")
 
-    # ── Fetch wallet ─────────────────────────────────────────────────────────
-    with console.status("Fetching wallet balances..."):
-        wallet = fetch_wallet_balance()
+        # ── Fetch fills ──────────────────────────────────────────────────────
+        with console.status(f"[{name}] Fetching fills..."):
+            raw_fills = fetch_fills(key=key, secret=secret)
 
-    console.print(f"[green]✓[/] Fetched wallet balances for [bold]{len(wallet)}[/] assets")
+        if args.limit:
+            raw_fills = raw_fills[: args.limit]
 
-    # ── Parse fills ──────────────────────────────────────────────────────────
-    fills = [Fill.from_api(r) for r in raw_fills]
+        # ── Fetch wallet ─────────────────────────────────────────────────────
+        with console.status(f"[{name}] Fetching wallet balances..."):
+            wallet = fetch_wallet_balance(key=key, secret=secret)
+            for w in wallet:
+                w["account_name"] = name
+            total_wallet.extend(wallet)
 
-    # ── Match into trades ─────────────────────────────────────────────────────
-    trades = match_trades(fills)
-    console.print(f"[green]✓[/] Matched [bold]{len(trades)}[/] complete trades")
+        # ── Fetch transactions ───────────────────────────────────────────────
+        with console.status(f"[{name}] Fetching transactions (funding fees)..."):
+            transactions = fetch_wallet_transactions(key=key, secret=secret)
 
-    if not trades:
-        console.print("[yellow]No complete trades found. Do you have closed positions?[/]")
+        # ── Parse and Match ──────────────────────────────────────────────────
+        fills = [Fill.from_api(r) for r in raw_fills]
+        trades = match_trades(fills)
+        
+        # Set account name and apply funding
+        for t in trades:
+            t.account_name = name
+        
+        apply_funding_fees(trades, transactions)
+        
+        all_trades.extend(trades)
+        console.print(f"  [green]✓[/] {name}: Matched [bold]{len(trades)}[/] trades")
+
+    if not all_trades:
+        console.print("[yellow]No complete trades found across all accounts.[/]")
         sys.exit(0)
 
     # ── Database ─────────────────────────────────────────────────────────────
@@ -90,12 +109,12 @@ def main() -> None:
         if args.reset:
             db.clear_db()
             console.print("[yellow]! Wiped local database (--reset)[/]")
-        db.save_trades(trades)
-    console.print("[green]✓[/] Saved trades to [cyan]journal.db[/]")
+        db.save_trades(all_trades)
+    console.print(f"[green]✓[/] Total: Saved [bold]{len(all_trades)}[/] trades to [cyan]journal.db[/]")
 
     # ── Summary table ─────────────────────────────────────────────────────────
-    summary = build_summary(trades)
-    table = Table(title="Trade Summary", border_style="blue")
+    summary = build_summary(all_trades)
+    table = Table(title="Global Trade Summary", border_style="blue")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", justify="right")
 
@@ -104,6 +123,7 @@ def main() -> None:
     table.add_row("Losers 📉", str(summary["losers"]))
     table.add_row("Win Rate", f"{summary['win_rate']}%")
     table.add_row("Gross P&L", str(summary["total_gross_pnl"]))
+    table.add_row("Total Funding", f"[yellow]{summary['total_funding']}[/]")
     table.add_row("Base Fee (ex-GST)", str(summary["total_base_fee"]))
     table.add_row("GST on Fees 18%", str(summary["total_gst"]))
     table.add_row("Total Commission", str(summary["total_commission"]))
@@ -123,19 +143,19 @@ def main() -> None:
     console.print()
     with console.status("Writing trade notes..."):
         written = 0
-        for trade in trades:
+        for trade in all_trades:
             write_trade_note(trade)
             written += 1
 
-    console.print(f"[green]✓[/] Written [bold]{written}[/] trade notes → [cyan]{config.VAULT_PATH / 'trades'}[/]")
+    console.print(f"[green]✓[/] Written [bold]{written}[/] trade notes")
 
     with console.status("Writing daily notes..."):
-        daily = write_daily_notes(trades)
+        daily = write_daily_notes(all_trades)
 
-    console.print(f"[green]✓[/] Written [bold]{len(daily)}[/] daily notes → [cyan]{config.VAULT_PATH / 'daily'}[/]")
+    console.print(f"[green]✓[/] Written [bold]{len(daily)}[/] daily notes")
 
     with console.status("Updating dashboard..."):
-        dash_path = write_dashboard(trades, wallet)
+        dash_path = write_dashboard(all_trades, total_wallet)
 
     console.print(f"[green]✓[/] Dashboard updated → [cyan]{dash_path}[/]")
 

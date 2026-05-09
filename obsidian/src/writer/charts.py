@@ -13,7 +13,7 @@ def _chart_pnl_bar(trades: list[Trade], n: int = 20) -> str:
     recent = list(reversed(trades[:n]))  # chronological order
     labels = json.dumps([f"{t.symbol} {t.date_str}" for t in recent])
     data = json.dumps([round(t.net_pnl, 4) for t in recent])
-    colors = json.dumps(["#2ecc71" if t.is_winner else "#e74c3c" for t in recent])
+    colors = json.dumps(["#22c55e" if t.is_winner else "#ef4444" for t in recent])
 
     return f"""```chart
 type: bar
@@ -46,8 +46,8 @@ labels: {labels}
 series:
   - title: Cumulative P&L
     data: {json.dumps(cumulative)}
-    backgroundColor: "rgba(52, 152, 219, 0.2)"
-    borderColor: "#3498db"
+    backgroundColor: "rgba(113, 113, 122, 0.2)"
+    borderColor: "#71717a"
     fill: true
 tension: 0.3
 width: 100%
@@ -63,7 +63,7 @@ def _chart_by_symbol(trades: list[Trade]) -> str:
 
     symbols = list(by_symbol.keys())
     values = [round(by_symbol[s], 4) for s in symbols]
-    colors = ["#2ecc71" if v >= 0 else "#e74c3c" for v in values]
+    colors = ["#22c55e" if v >= 0 else "#ef4444" for v in values]
 
     return f"""```chart
 type: bar
@@ -85,6 +85,65 @@ labels: ["Winners", "Losers"]
 series:
   - title: Win/Loss
     data: [{summary["winners"]}, {summary["losers"]}]
-    backgroundColor: ["#2ecc71", "#e74c3c"]
+    backgroundColor: ["#22c55e", "#ef4444"]
 width: 60%
+```"""
+
+
+def _chart_by_day_of_week(trades: list[Trade]) -> str:
+    """Bar chart of average net P&L by day of the week."""
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    by_day: dict[int, list[float]] = defaultdict(list)
+    for t in trades:
+        by_day[t.entry_time.weekday()].append(t.net_pnl)
+
+    avg_pnl = [round(sum(by_day[i]) / len(by_day[i]), 4) if by_day[i] else 0 for i in range(7)]
+    colors = ["#22c55e" if v >= 0 else "#ef4444" for v in avg_pnl]
+
+    return f"""```chart
+type: bar
+labels: {json.dumps(days)}
+series:
+  - title: Avg Net P&L by Day
+    data: {json.dumps(avg_pnl)}
+    backgroundColor: {json.dumps(colors)}
+width: 100%
+beginAtZero: true
+```"""
+
+
+def _chart_by_hour(trades: list[Trade]) -> str:
+    """Bar chart of total net P&L by hour of day (entry)."""
+    hours = [f"{h:02d}:00" for h in range(24)]
+    by_hour: dict[int, float] = defaultdict(float)
+    for t in trades:
+        by_hour[t.entry_time.hour] += t.net_pnl
+
+    values = [round(by_hour[h], 4) for h in range(24)]
+    colors = ["#22c55e" if v >= 0 else "#ef4444" for v in values]
+
+    return f"""```chart
+type: bar
+labels: {json.dumps(hours)}
+series:
+  - title: Net P&L by Entry Hour (UTC)
+    data: {json.dumps(values)}
+    backgroundColor: {json.dumps(colors)}
+width: 100%
+beginAtZero: true
+```"""
+
+
+def _mermaid_trade_timeline(trade: Trade) -> str:
+    """Mermaid Gantt chart for a single trade's timeline."""
+    start_str = trade.entry_time.strftime("%Y-%m-%d %H:%M:%S")
+    end_str = trade.exit_time.strftime("%Y-%m-%d %H:%M:%S")
+    
+    return f"""```mermaid
+gantt
+    title Trade Duration: {trade.hold_duration_minutes}m
+    dateFormat  YYYY-MM-DD HH:mm:ss
+    axisFormat  %H:%M
+    section {trade.symbol}
+    {trade.direction.upper()} :active, {start_str}, {end_str}
 ```"""

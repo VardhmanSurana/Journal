@@ -21,6 +21,8 @@ _MIGRATION_COLUMNS: list[tuple[str, str]] = [
     ("entry_role",         "TEXT DEFAULT ''"),
     ("exit_role",          "TEXT DEFAULT ''"),
     ("settling_asset",     "TEXT DEFAULT ''"),
+    ("funding_fees",       "REAL DEFAULT 0"),
+    ("account_name",       "TEXT DEFAULT 'Default'"),
 ]
 
 
@@ -47,7 +49,9 @@ def init_db() -> None:
                 exit_notional      REAL DEFAULT 0,
                 entry_role         TEXT DEFAULT '',
                 exit_role          TEXT DEFAULT '',
-                settling_asset     TEXT DEFAULT ''
+                settling_asset     TEXT DEFAULT '',
+                funding_fees       REAL DEFAULT 0,
+                account_name       TEXT DEFAULT 'Default'
             )
         """)
 
@@ -72,7 +76,7 @@ def init_db() -> None:
 def save_trades(trades: List[Trade]) -> None:
     with sqlite3.connect(DB_PATH) as conn:
         for t in trades:
-            trade_id = f"{t.entry_order_id}_{t.exit_order_id}_{t.size}"
+            trade_id = f"{t.account_name}_{t.entry_order_id}_{t.exit_order_id}_{t.size}"
             conn.execute(
                 """
                 INSERT OR REPLACE INTO trades (
@@ -83,9 +87,10 @@ def save_trades(trades: List[Trade]) -> None:
                     gst_in_commission, net_fee_excl_gst,
                     income_tax, profit_after_tax,
                     entry_notional, exit_notional,
-                    entry_role, exit_role, settling_asset
+                    entry_role, exit_role, settling_asset,
+                    funding_fees, account_name
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     trade_id, t.symbol, t.direction,
@@ -97,6 +102,7 @@ def save_trades(trades: List[Trade]) -> None:
                     t.income_tax, t.profit_after_tax,
                     t.entry_notional, t.exit_notional,
                     t.entry_role, t.exit_role, t.settling_asset,
+                    t.funding_fees, t.account_name,
                 ),
             )
 

@@ -39,25 +39,25 @@ class DeltaAPIError(Exception):
 # Auth helpers
 # ---------------------------------------------------------------------------
 
-def _sign(method: str, path: str, query: str, body: str, timestamp: str) -> str:
-    """Generate HMAC-SHA256 signature as required by Delta Exchange."""
+def _headers(method: str, path: str, query: str = "", body: str = "", key: str = None, secret: str = None) -> dict[str, str]:
+    timestamp = str(int(time.time()))
+    api_key = key or config.API_KEY
+    api_secret = secret or config.API_SECRET
+    
     message = method + timestamp + path
     if query:
         message += "?" + query
     message += body
-    return hmac.new(
-        config.API_SECRET.encode(),
+    
+    signature = hmac.new(
+        api_secret.encode(),
         message.encode(),
         hashlib.sha256,
     ).hexdigest()
 
-
-def _headers(method: str, path: str, query: str = "", body: str = "") -> dict[str, str]:
-    timestamp = str(int(time.time()))
-    signature = _sign(method, path, query, body, timestamp)
     return {
         "Accept": "application/json",
-        "api-key": config.API_KEY,
+        "api-key": api_key,
         "timestamp": timestamp,
         "signature": signature,
     }
@@ -67,19 +67,16 @@ def _headers(method: str, path: str, query: str = "", body: str = "") -> dict[st
 # Core request — with retry/backoff (D5) and safe error wrapping (S1)
 # ---------------------------------------------------------------------------
 
-def _get(path: str, params: dict[str, Any] | None = None, public: bool = False) -> dict[str, Any]:
+def _get(path: str, params: dict[str, Any] | None = None, public: bool = False, key: str = None, secret: str = None) -> dict[str, Any]:
     """
     Make an authenticated (or public) GET request with exponential backoff.
-
-    Retries on 429 (rate-limit) and transient 5xx errors up to _MAX_RETRIES times.
-    Raises DeltaAPIError on persistent failure (S1: no auth headers in traces).
     """
     params = params or {}
     query = "&".join(f"{k}={v}" for k, v in params.items())
     url = f"{config.base_url}{path}"
     hdrs = {"Accept": "application/json"}
     if not public:
-        hdrs.update(_headers("GET", f"/v2{path}", query))
+        hdrs.update(_headers("GET", f"/v2{path}", query, "", key, secret))
 
     last_exc: Exception | None = None
     for attempt in range(_MAX_RETRIES + 1):
@@ -114,7 +111,7 @@ def _get(path: str, params: dict[str, Any] | None = None, public: bool = False) 
     ) from last_exc
 
 
-def _paginate(path: str, params: dict[str, Any] | None = None) -> Generator[dict, None, None]:
+def _paginate(path: str, params: dict[str, Any] | None = None, key: str = None, secret: str = None) -> Generator[dict, None, None]:
     """
     Yield all pages of results from a cursor-paginated endpoint.
     Delta uses `after` cursor in meta for next page.
@@ -123,7 +120,7 @@ def _paginate(path: str, params: dict[str, Any] | None = None) -> Generator[dict
     params.setdefault("page_size", config.PAGE_LIMIT)
 
     while True:
-        data = _get(path, params)
+        data = _get(path, params, key=key, secret=secret)
         results = data.get("result", [])
         if not results:
             break
@@ -142,34 +139,42 @@ def _paginate(path: str, params: dict[str, Any] | None = None) -> Generator[dict
 # Public fetch functions
 # ---------------------------------------------------------------------------
 
-def fetch_fills(after: str | None = None) -> list[dict]:
+def fetch_fills(after: str | None = None, key: str = None, secret: str = None) -> list[dict]:
     """
     Fetch all fills (actual trade executions).
-    Each fill has: price, side, size, commission, product_symbol, created_at.
     """
     params: dict[str, Any] = {}
     if after:
         params["after"] = after
 
-    return list(_paginate("/fills", params))
+    return list(_paginate("/fills", params, key=key, secret=secret))
 
 
-def fetch_order_history(after: str | None = None) -> list[dict]:
+def fetch_order_history(after: str | None = None, key: str = None, secret: str = None) -> list[dict]:
     """
     Fetch closed/cancelled orders.
-    Each order has: limit_price, stop_price, paid_commission, state.
     """
     params: dict[str, Any] = {}
     if after:
         params["after"] = after
 
-    return list(_paginate("/orders/history", params))
+    return list(_paginate("/orders/history", params, key=key, secret=secret))
 
 
-def fetch_wallet_balance() -> list[dict]:
+def fetch_wallet_balance(key: str = None, secret: str = None) -> list[dict]:
     """
     Fetch current wallet balances.
-    Returns: balance, available_balance, net_equity per asset.
     """
-    data = _get("/wallet/balances")
+    data = _get("/wallet/balances", key=key, secret=secret)
     return data.get("result", [])
+
+
+def fetch_wallet_transactions(after: str | None = None, key: str = None, secret: str = None) -> list[dict]:
+    """
+    Fetch wallet transaction history (deposits, withdrawals, funding, etc.).
+    """
+    params: dict[str, Any] = {}
+    if after:
+        params["after"] = after
+
+    return list(_paginate("/wallet/transactions", params, key=key, secret=secret))

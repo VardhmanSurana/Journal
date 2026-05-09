@@ -13,6 +13,8 @@ from src.writer.charts import (
     _chart_cumulative,
     _chart_by_symbol,
     _chart_win_loss_pie,
+    _chart_by_day_of_week,
+    _chart_by_hour,
 )
 from src.writer.queries import (
     _tracker_net_pnl,
@@ -44,11 +46,12 @@ def write_dashboard(trades: list[Trade], balance: list[dict]) -> Path:
 
     wallet_rows = ""
     for w in balance:
+        acc = w.get("account_name", "Default")
         sym = w.get("asset_symbol", "")
         bal = float(w.get("balance", 0))
         avail = float(w.get("available_balance", 0))
         if bal > 0:
-            wallet_rows += f"| {sym} | `{round(bal, 4)}` | `{round(avail, 4)}` |\n"
+            wallet_rows += f"| {acc} | {sym} | `{round(bal, 4)}` | `{round(avail, 4)}` |\n"
 
     daily_folder = config.query_path("daily")
 
@@ -115,8 +118,8 @@ def write_dashboard(trades: list[Trade], balance: list[dict]) -> Path:
 
 ## 💰 Wallet Balances
 
-| Asset | Balance | Available |
-|---|---|---|
+| Account | Asset | Balance | Available |
+|---|---|---|---|
 {wallet_rows}
 ---
 
@@ -125,6 +128,12 @@ def write_dashboard(trades: list[Trade], balance: list[dict]) -> Path:
 ### Net P&L — Last 20 Trades
 
 {_chart_pnl_bar(trades)}
+
+### P&L by Time (Edges)
+
+| Day of Week | Hour of Day |
+|---|---|
+| {_chart_by_day_of_week(trades)} | {_chart_by_hour(trades)} |
 
 ### Cumulative P&L
 
@@ -243,11 +252,11 @@ def _equity_curve_js(daily_folder: str) -> str:
         "            datasets: [{\n"
         "                label: 'Cumulative Net P&L',\n"
         "                data: data,\n"
-        "                borderColor: '#22c55e',\n"
+        "                borderColor: '#71717a',\n"
         "                backgroundColor: gradient,\n"
         "                borderWidth: 2,\n"
         "                pointBackgroundColor: '#18181b',\n"
-        "                pointBorderColor: '#22c55e',\n"
+        "                pointBorderColor: '#71717a',\n"
         "                pointBorderWidth: 2,\n"
         "                pointRadius: 4,\n"
         "                pointHoverRadius: 6,\n"
@@ -357,10 +366,7 @@ if (!document.getElementById('journal-switch-styles')) {
             box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
         input:checked + .journal-slider {
-            background-color: var(--interactive-accent);
-        }
-        input:checked + .journal-slider:before {
-            transform: translateX(18px);
+            background-color: #71717a;
         }
         .journal-switch-label {
             transition: color 0.2s;

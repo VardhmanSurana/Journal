@@ -101,6 +101,14 @@ class Trade(SQLModel, table=True):
     confidence_score: Optional[int] = None
     notes: Optional[str] = None
     mistakes: Optional[str] = None
+    
+    # Advanced Journaling & Risk
+    pre_plan: Optional[str] = None
+    risk_pct: Optional[float] = 0.0 # Target % of account to risk
+    actual_risk_pct: Optional[float] = 0.0 # Calculated % of account risked
+    stop_loss: Optional[float] = 0.0
+    take_profit: Optional[float] = 0.0
+    
     result: Optional[str] = None # "WIN", "LOSS", "BREAKEVEN"
     is_winner: bool = False
     is_open: bool = True # False when position size reaches 0
@@ -129,6 +137,18 @@ class DailyReview(SQLModel, table=True):
     discipline_score: Optional[int] = None
     mistakes: Optional[str] = None
     lessons: Optional[str] = None
+
+class PriceAlert(SQLModel, table=True):
+    """6. PRICE ALERTS TABLE"""
+    __tablename__ = "price_alerts"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    symbol: str
+    target_price: float
+    condition: str # "ABOVE" | "BELOW"
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    triggered_at: Optional[datetime] = None
 
 # --- Frontend Data Transfer Objects ---
 

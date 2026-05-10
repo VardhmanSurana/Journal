@@ -26,9 +26,20 @@ interface SidebarProps {
   isSyncing: boolean
   collapsed: boolean
   setCollapsed: (collapsed: boolean) => void
+  syncDisabled?: boolean
+  syncDisabledReason?: string
 }
 
-export const Sidebar = ({ activeTab, setActiveTab, onSync, isSyncing, collapsed, setCollapsed }: SidebarProps) => {
+export const Sidebar = ({
+  activeTab,
+  setActiveTab,
+  onSync,
+  isSyncing,
+  collapsed,
+  setCollapsed,
+  syncDisabled = false,
+  syncDisabledReason = 'Sync unavailable',
+}: SidebarProps) => {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -90,15 +101,15 @@ export const Sidebar = ({ activeTab, setActiveTab, onSync, isSyncing, collapsed,
       <div className={cn("border-t border-zinc-800 space-y-4", collapsed ? "p-2" : "p-4")}>
         <button
           onClick={onSync}
-          disabled={isSyncing}
-          title={collapsed ? (isSyncing ? 'Syncing...' : 'Sync Delta') : undefined}
+          disabled={isSyncing || syncDisabled}
+          title={collapsed ? (isSyncing ? 'Syncing...' : (syncDisabled ? syncDisabledReason : 'Sync Delta')) : undefined}
           className={cn(
-            "flex items-center gap-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl transition-colors disabled:opacity-50",
+            "flex items-center gap-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
             collapsed ? "justify-center p-3 w-full" : "px-4 py-3 w-full"
           )}
         >
           <RefreshCw size={20} className={cn(isSyncing && "animate-spin")} />
-          {!collapsed && <span className="font-medium">{isSyncing ? 'Syncing...' : 'Sync Delta'}</span>}
+          {!collapsed && <span className="font-medium">{isSyncing ? 'Syncing...' : (syncDisabled ? 'Sync Locked' : 'Sync Delta')}</span>}
         </button>
         
         <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between px-4 py-2")}>

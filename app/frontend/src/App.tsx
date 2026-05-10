@@ -13,6 +13,7 @@ import { TradeDetailModal } from './components/TradeDetailModal'
 import { TradeFilters } from './components/TradeFilters'
 import { TradeReviewModal } from './components/TradeReviewModal'
 import { ThemeProvider, useTheme } from './hooks/useTheme'
+import { API_BASE } from './config/api'
 
 interface Trade {
   id: number
@@ -34,7 +35,26 @@ interface Trade {
   notes: string
 }
 
-const API_BASE = 'http://localhost:8000/api'
+interface ConnectionHealth {
+  api_status: string
+  sync_status: 'idle' | 'running' | 'success' | 'failed'
+  last_success_at?: string
+  is_stale: boolean
+  stale_seconds?: number
+  last_error?: string
+  safety: {
+    api_key_configured: boolean
+    api_secret_configured: boolean
+    webhook_configured: boolean
+    deadman_switch_configured: boolean
+  }
+}
+interface OpsEvent {
+  type: string
+  severity: 'info' | 'warning' | 'critical'
+  message: string
+  timestamp: string
+}
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -49,22 +69,36 @@ function AppContent() {
   const [alerts, setAlerts] = useState<any[]>([])
   const [showAlerts, setShowAlerts] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [health, setHealth] = useState<ConnectionHealth | null>(null)
+  const [opsEvents, setOpsEvents] = useState<OpsEvent[]>([])
   const { format } = useCurrency()
   const { theme, toggleTheme } = useTheme()
+  const syncDisabled = Boolean(health && (health.sync_status === 'running' || !health.safety.api_key_configured || !health.safety.api_secret_configured))
+  const syncDisabledReason = !health
+    ? 'Health data unavailable'
+    : health.sync_status === 'running'
+      ? 'Sync is already running'
+      : (!health.safety.api_key_configured || !health.safety.api_secret_configured)
+        ? 'Configure API credentials before sync'
+        : 'Sync unavailable'
 
   const fetchData = async () => {
     try {
-      const [tradesRes, summaryRes, positionsRes, newsRes] = await Promise.all([
+      const [tradesRes, summaryRes, positionsRes, newsRes, healthRes, opsRes] = await Promise.all([
         axios.get(`${API_BASE}/trades`),
         axios.get(`${API_BASE}/summary`),
         axios.get(`${API_BASE}/positions`),
-        axios.get(`${API_BASE}/news`)
+        axios.get(`${API_BASE}/news`),
+        axios.get(`${API_BASE}/health/connection`),
+        axios.get(`${API_BASE}/alerts/ops?limit=5`)
       ])
       setTrades(tradesRes.data)
       setFilteredTrades(tradesRes.data)
       setSummary(summaryRes.data)
       setPositions(positionsRes.data)
       setNews(newsRes.data)
+      setHealth(healthRes.data)
+      setOpsEvents(opsRes.data.events || [])
     } catch (err) {
       console.error('Error fetching data:', err)
     }
@@ -120,6 +154,8 @@ function AppContent() {
         isSyncing={loading}
         collapsed={sidebarCollapsed}
         setCollapsed={setSidebarCollapsed}
+        syncDisabled={syncDisabled}
+        syncDisabledReason={syncDisabledReason}
       />
 
       <main className="flex-1 h-screen overflow-y-auto">
@@ -146,6 +182,21 @@ function AppContent() {
           </div>
           
           <div className="flex items-center gap-6">
+            {health && (
+              <div className={`px-3 py-2 rounded-lg border text-xs ${
+                health.is_stale || health.sync_status === 'failed'
+                  ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                  : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+              }`}>
+                <div className="font-semibold">
+                  {health.is_stale ? 'Stale Data' : 'Live Data'}
+                </div>
+                <div>
+                  Sync: {health.sync_status}
+                  {health.last_success_at ? ` · Last success ${new Date(health.last_success_at).toLocaleTimeString()}` : ''}
+                </div>
+              </div>
+            )}
             <button
               onClick={toggleTheme}
               className={`p-2 rounded-lg transition-colors ${
@@ -164,6 +215,23 @@ function AppContent() {
             </div>
           </div>
         </header>
+        {health && (
+          <div className={`mx-8 mt-4 p-3 rounded-xl border text-sm ${
+            health.is_stale || health.sync_status === 'failed'
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+              : 'border-zinc-700 bg-zinc-900/40 text-zinc-300'
+          }`}>
+            <span className="font-semibold">Connection Health:</span> API {health.api_status.toUpperCase()} · Sync {health.sync_status.toUpperCase()} ·
+            Webhook {health.safety.webhook_configured ? 'configured' : 'missing'} ·
+            Deadman switch {health.safety.deadman_switch_configured ? 'configured' : 'missing'}.
+            {health.last_error ? ` Last error: ${health.last_error}` : ''}
+          </div>
+        )}
+        {opsEvents.length > 0 && (
+          <div className="mx-8 mt-3 p-3 rounded-xl border border-zinc-700 bg-zinc-900/40 text-zinc-300 text-sm">
+            <span className="font-semibold">Operational Alerts:</span> {opsEvents[0].message}
+          </div>
+        )}
 
         <div className="p-8 max-w-7xl mx-auto">
           {activeTab === 'dashboard' && (

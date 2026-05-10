@@ -1,14 +1,64 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select, text
-from typing import List, Dict, Any
-from datetime import datetime
-from pydantic import BaseModel
+from typing import List, Dict, Any, Literal
+from datetime import datetime, timezone
+from pydantic import BaseModel, Field
 from api.database import get_session
 from api.models import Trade, Fill, TradeEvent, DashboardSummary, APIFill, DailyReview, PriceAlert
 from api.client import fetch_fills, fetch_wallet_balance, fetch_positions, fetch_tickers, fetch_news, fetch_rss_news
 from api.config import config
 
 router = APIRouter()
+
+
+class TradeUpdateRequest(BaseModel):
+    strategy: str | None = None
+    emotion: str | None = None
+    notes: str | None = None
+    mistakes: str | None = None
+    session: str | None = None
+    discipline_score: int | None = Field(default=None, ge=0, le=10)
+    confidence_score: int | None = Field(default=None, ge=0, le=10)
+    pre_plan: str | None = None
+    risk_pct: float | None = Field(default=None, ge=0)
+    stop_loss: float | None = Field(default=None, ge=0)
+    take_profit: float | None = Field(default=None, ge=0)
+
+
+class SyncState(BaseModel):
+    status: Literal["idle", "running", "success", "failed"] = "idle"
+    last_sync_at: datetime | None = None
+    last_success_at: datetime | None = None
+    last_error: str | None = None
+    new_fills_synced: int = 0
+
+
+SYNC_STATE = SyncState()
+OPS_EVENTS: list[dict[str, Any]] = []
+
+
+def _emit_ops_event(event_type: str, severity: Literal["info", "warning", "critical"], message: str) -> None:
+    OPS_EVENTS.insert(0, {
+        "type": event_type,
+        "severity": severity,
+        "message": message,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    del OPS_EVENTS[200:]
+
+
+class DailyReviewRequest(BaseModel):
+    date_str: str
+    mood: str | None = None
+    discipline_score: int | None = Field(default=None, ge=0, le=10)
+    mistakes: str | None = None
+    lessons: str | None = None
+
+
+class PriceAlertRequest(BaseModel):
+    symbol: str = Field(min_length=1, max_length=32)
+    target_price: float = Field(gt=0)
+    condition: Literal["ABOVE", "BELOW"]
 
 def reconstruct_trades_from_db(session: Session):
     """Event-driven Trade Reconstruction Engine using Notional Values."""
@@ -147,29 +197,38 @@ def reconstruct_trades_from_db(session: Session):
 
 @router.post("/sync")
 def sync_trades(session: Session = Depends(get_session)):
-    raw_fills = fetch_fills()
-    api_fills = [APIFill(**f) for f in raw_fills]
-    
-    new_fills_count = 0
-    for af in api_fills:
-        existing = session.exec(select(Fill).where(Fill.exchange_fill_id == af.id)).first()
-        if not existing:
-            fill = Fill(
-                exchange_fill_id=af.id,
-                symbol=af.symbol,
-                side=af.side,
-                price=af.price,
-                size=af.size,
-                fee=af.commission,
-                notional=af.notional, # <--- Save Notional
-                timestamp=af.timestamp,
-                order_id=af.order_id
-            )
-            session.add(fill)
-            new_fills_count += 1
-            
-    session.commit()
-    reconstruct_trades_from_db(session)
+    SYNC_STATE.status = "running"
+    SYNC_STATE.last_sync_at = datetime.now(timezone.utc)
+    SYNC_STATE.last_error = None
+    try:
+        raw_fills = fetch_fills()
+        api_fills = [APIFill(**f) for f in raw_fills]
+        
+        new_fills_count = 0
+        for af in api_fills:
+            existing = session.exec(select(Fill).where(Fill.exchange_fill_id == af.id)).first()
+            if not existing:
+                fill = Fill(
+                    exchange_fill_id=af.id,
+                    symbol=af.symbol,
+                    side=af.side,
+                    price=af.price,
+                    size=af.size,
+                    fee=af.commission,
+                    notional=af.notional,
+                    timestamp=af.timestamp,
+                    order_id=af.order_id
+                )
+                session.add(fill)
+                new_fills_count += 1
+                
+        session.commit()
+        reconstruct_trades_from_db(session)
+    except Exception:
+        SYNC_STATE.status = "failed"
+        SYNC_STATE.last_error = "Sync failed due to upstream API or parsing error."
+        _emit_ops_event("sync_failed", "critical", SYNC_STATE.last_error)
+        raise
     
     # Check for large P&L trades to trigger webhooks
     if config.WEBHOOK_URL:
@@ -186,6 +245,10 @@ def sync_trades(session: Session = Depends(get_session)):
                 except Exception as e:
                     print(f"Webhook failed: {e}")
 
+    SYNC_STATE.status = "success"
+    SYNC_STATE.last_success_at = datetime.now(timezone.utc)
+    SYNC_STATE.new_fills_synced = new_fills_count
+    _emit_ops_event("sync_success", "info", f"Sync completed with {new_fills_count} new fills.")
     return {"status": "success", "new_fills_synced": new_fills_count}
 
 @router.get("/trades")
@@ -295,13 +358,13 @@ def get_positions():
             positions = fetch_positions(asset)
             if positions:
                 all_positions.extend(positions)
-        except:
-            pass
+        except Exception:
+            continue
     
     # Get tickers for all symbols
     try:
         tickers = {t.get("symbol"): t for t in fetch_tickers(",".join(common_assets))}
-    except:
+    except Exception:
         tickers = {}
     
     result = []
@@ -555,34 +618,15 @@ def get_tax_summary(session: Session = Depends(get_session)):
 
 
 @router.put("/trades/{trade_id}")
-def update_trade(trade_id: int, updates: dict, session: Session = Depends(get_session)):
+def update_trade(trade_id: int, updates: TradeUpdateRequest, session: Session = Depends(get_session)):
     """Update trade with journal details (strategy, emotion, notes, etc)."""
     trade = session.get(Trade, trade_id)
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
     
-    if "strategy" in updates:
-        trade.strategy = updates["strategy"]
-    if "emotion" in updates:
-        trade.emotion = updates["emotion"]
-    if "notes" in updates:
-        trade.notes = updates["notes"]
-    if "mistakes" in updates:
-        trade.mistakes = updates["mistakes"]
-    if "session" in updates:
-        trade.session = updates["session"]
-    if "discipline_score" in updates:
-        trade.discipline_score = updates["discipline_score"]
-    if "confidence_score" in updates:
-        trade.confidence_score = updates["confidence_score"]
-    if "pre_plan" in updates:
-        trade.pre_plan = updates["pre_plan"]
-    if "risk_pct" in updates:
-        trade.risk_pct = updates["risk_pct"]
-    if "stop_loss" in updates:
-        trade.stop_loss = updates["stop_loss"]
-    if "take_profit" in updates:
-        trade.take_profit = updates["take_profit"]
+    updates_dict = updates.model_dump(exclude_unset=True)
+    for field_name, field_value in updates_dict.items():
+        setattr(trade, field_name, field_value)
     
     # Calculate actual risk % if stop loss is set
     if trade.stop_loss and trade.avg_entry and trade.size:
@@ -596,14 +640,118 @@ def update_trade(trade_id: int, updates: dict, session: Session = Depends(get_se
             
             if total_equity > 0:
                 trade.actual_risk_pct = round((total_risk_amount / total_equity) * 100, 2)
-        except:
-            pass
+        except (TypeError, ValueError):
+            trade.actual_risk_pct = 0.0
 
     session.add(trade)
     session.commit()
     session.refresh(trade)
     
     return {"status": "success", "trade_id": trade_id}
+
+
+@router.get("/health/connection")
+def get_connection_health():
+    now = datetime.now(timezone.utc)
+    last_success = SYNC_STATE.last_success_at
+    stale_seconds = int((now - last_success).total_seconds()) if last_success else None
+    is_stale = stale_seconds is None or stale_seconds > 120
+    return {
+        "api_status": "ok",
+        "sync_status": SYNC_STATE.status,
+        "last_sync_at": SYNC_STATE.last_sync_at,
+        "last_success_at": SYNC_STATE.last_success_at,
+        "new_fills_synced": SYNC_STATE.new_fills_synced,
+        "last_error": SYNC_STATE.last_error,
+        "is_stale": is_stale,
+        "stale_after_seconds": 120,
+        "stale_seconds": stale_seconds,
+        "safety": {
+            "api_key_configured": bool(config.API_KEY),
+            "api_secret_configured": bool(config.API_SECRET),
+            "webhook_configured": bool(config.WEBHOOK_URL),
+            "deadman_switch_configured": str(
+                __import__("os").getenv("DEADMAN_SWITCH_ENABLED", "false")
+            ).lower() == "true",
+        },
+    }
+
+
+@router.get("/health/checklist")
+def get_security_checklist():
+    checks = [
+        {
+            "key": "api_key_configured",
+            "ok": bool(config.API_KEY),
+            "message": "Delta API key configured",
+            "severity": "critical",
+        },
+        {
+            "key": "api_secret_configured",
+            "ok": bool(config.API_SECRET),
+            "message": "Delta API secret configured",
+            "severity": "critical",
+        },
+        {
+            "key": "webhook_configured",
+            "ok": bool(config.WEBHOOK_URL),
+            "message": "Webhook configured for risk alerts",
+            "severity": "medium",
+        },
+        {
+            "key": "deadman_switch_configured",
+            "ok": str(__import__("os").getenv("DEADMAN_SWITCH_ENABLED", "false")).lower() == "true",
+            "message": "Deadman switch is enabled",
+            "severity": "high",
+        },
+    ]
+    blocking_issues = [c for c in checks if c["severity"] == "critical" and not c["ok"]]
+    return {
+        "overall_status": "blocked" if blocking_issues else "ok",
+        "blocking_issues": len(blocking_issues),
+        "checks": checks,
+        "generated_at": datetime.now(timezone.utc),
+    }
+
+
+@router.get("/alerts/ops")
+def get_operational_alerts(limit: int = 50):
+    safe_limit = max(1, min(limit, 200))
+    return {"events": OPS_EVENTS[:safe_limit], "total": len(OPS_EVENTS)}
+
+
+@router.get("/sync/reconcile")
+def reconcile_sync(session: Session = Depends(get_session)):
+    raw_fills = fetch_fills()
+    api_fill_ids = {str(item.get("id")) for item in raw_fills if item.get("id")}
+    db_fills = session.exec(select(Fill)).all()
+    db_fill_ids = {fill.exchange_fill_id for fill in db_fills}
+
+    missing_in_db = sorted(list(api_fill_ids - db_fill_ids))
+    missing_in_api = sorted(list(db_fill_ids - api_fill_ids))
+    duplicate_count = len(db_fill_ids) != len(db_fills)
+
+    status: Literal["ok", "warning", "critical"] = "ok"
+    if missing_in_db:
+        status = "critical"
+    elif missing_in_api or duplicate_count:
+        status = "warning"
+
+    result = {
+        "status": status,
+        "api_fill_count": len(api_fill_ids),
+        "db_fill_count": len(db_fill_ids),
+        "db_row_count": len(db_fills),
+        "missing_in_db_count": len(missing_in_db),
+        "missing_in_api_count": len(missing_in_api),
+        "duplicate_rows_detected": duplicate_count,
+        "missing_in_db_sample": missing_in_db[:25],
+        "missing_in_api_sample": missing_in_api[:25],
+        "generated_at": datetime.now(timezone.utc),
+    }
+    if status != "ok":
+        _emit_ops_event("reconcile_warning", "warning" if status == "warning" else "critical", "Reconciliation detected fill discrepancies.")
+    return result
 
 
 # === Daily Reviews CRUD ===
@@ -626,27 +774,28 @@ def get_daily_reviews(session: Session = Depends(get_session)):
 
 
 @router.post("/reviews")
-def create_daily_review(review: dict, session: Session = Depends(get_session)):
+def create_daily_review(review: DailyReviewRequest, session: Session = Depends(get_session)):
     """Create or update daily review."""
     existing = session.exec(
-        select(DailyReview).where(DailyReview.date_str == review.get("date_str"))
+        select(DailyReview).where(DailyReview.date_str == review.date_str)
     ).first()
     
     if existing:
-        existing.mood = review.get("mood", existing.mood)
-        existing.discipline_score = review.get("discipline_score", existing.discipline_score)
-        existing.mistakes = review.get("mistakes", existing.mistakes)
-        existing.lessons = review.get("lessons", existing.lessons)
+        payload = review.model_dump(exclude_unset=True)
+        existing.mood = payload.get("mood", existing.mood)
+        existing.discipline_score = payload.get("discipline_score", existing.discipline_score)
+        existing.mistakes = payload.get("mistakes", existing.mistakes)
+        existing.lessons = payload.get("lessons", existing.lessons)
         session.add(existing)
         session.commit()
         return {"status": "updated", "id": existing.id}
     else:
         new_review = DailyReview(
-            date_str=review["date_str"],
-            mood=review.get("mood"),
-            discipline_score=review.get("discipline_score"),
-            mistakes=review.get("mistakes", ""),
-            lessons=review.get("lessons", "")
+            date_str=review.date_str,
+            mood=review.mood,
+            discipline_score=review.discipline_score,
+            mistakes=review.mistakes or "",
+            lessons=review.lessons or ""
         )
         session.add(new_review)
         session.commit()
@@ -687,11 +836,17 @@ def get_alerts(session: Session = Depends(get_session)):
     return session.exec(select(PriceAlert).order_by(PriceAlert.created_at.desc())).all()
 
 @router.post("/alerts")
-def create_alert(alert: PriceAlert, session: Session = Depends(get_session)):
-    session.add(alert)
+def create_alert(alert: PriceAlertRequest, session: Session = Depends(get_session)):
+    new_alert = PriceAlert(
+        symbol=alert.symbol.upper(),
+        target_price=alert.target_price,
+        condition=alert.condition,
+        is_active=True,
+    )
+    session.add(new_alert)
     session.commit()
-    session.refresh(alert)
-    return alert
+    session.refresh(new_alert)
+    return new_alert
 
 @router.delete("/alerts/{alert_id}")
 def delete_alert(alert_id: int, session: Session = Depends(get_session)):
@@ -738,7 +893,8 @@ def check_alerts(session: Session = Depends(get_session)):
                         import requests
                         try:
                             requests.post(config.WEBHOOK_URL, json={"text": msg}, timeout=5)
-                        except: pass
+                        except Exception:
+                            pass
         except Exception as e:
             print(f"Price alert check failed: {e}")
     

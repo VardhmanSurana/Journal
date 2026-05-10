@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BookOpen, Plus, Save, X, Calendar, Smile, Frown, Meh, Edit2, Trash2 } from 'lucide-react'
+import { useThemeClasses } from '../utils/theme'
 
 interface DailyReview {
   id: number
@@ -31,11 +32,7 @@ export const DailyReviews = ({ theme }: DailyReviewsProps) => {
 
   const [isEditing, setIsEditing] = useState(false)
   const [editingReview, setEditingReview] = useState<Partial<DailyReview> | null>(null)
-
-  const bgClass = theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
-  const textClass = theme === 'dark' ? 'text-white' : 'text-zinc-900'
-  const cardBgClass = theme === 'dark' ? 'bg-zinc-800/50' : 'bg-zinc-50'
-  const subTextClass = theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'
+  const { bgClass, textClass, cardBgClass, subTextClass } = useThemeClasses(theme)
 
   const handleNewReview = () => {
     setEditingReview({

@@ -1,20 +1,21 @@
 import { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell, PieChart, Pie
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, Cell
 } from 'recharts'
 import { 
-  Shield, TrendingUp, TrendingDown, AlertTriangle, Activity,
-  Calculator, DollarSign, Percent, BarChart2
+  Shield, TrendingUp, TrendingDown, Activity,
+  Calculator, Percent, BarChart2
 } from 'lucide-react'
 import { useCurrency } from '../hooks/useCurrency'
+import { useThemeClasses, useChartTheme } from '../utils/theme'
+import { API_BASE } from '../config/api'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 
 interface RiskDashboardProps {
   theme: 'dark' | 'light'
 }
-
-const API_BASE = 'http://localhost:8000/api'
 
 interface RiskData {
   sharpe_ratio: number
@@ -44,7 +45,9 @@ interface Position {
 }
 
 export const RiskDashboard = ({ theme }: RiskDashboardProps) => {
-  const { format, currency, rate } = useCurrency()
+  const { format, convert } = useCurrency()
+  const { bgClass, textClass, cardBgClass, subTextClass } = useThemeClasses(theme)
+  const chartTheme = useChartTheme(theme)
   const [riskData, setRiskData] = useState<RiskData | null>(null)
   const [positions, setPositions] = useState<Position[]>([])
   const [loading, setLoading] = useState(true)
@@ -72,8 +75,6 @@ export const RiskDashboard = ({ theme }: RiskDashboardProps) => {
     fetchData()
   }, [])
 
-  const convertValue = (value: number) => currency === 'INR' ? value * rate : value
-
   const positionSizing = useMemo(() => {
     if (!calcEntryPrice || !calcStopLoss || calcEntryPrice === calcStopLoss) {
       return { position_size: 0, risk_amount: 0, stop_distance_pct: 0 }
@@ -92,13 +93,8 @@ export const RiskDashboard = ({ theme }: RiskDashboardProps) => {
   }, [calcAccountSize, calcRiskPercent, calcEntryPrice, calcStopLoss, calcContractSize])
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64 text-zinc-500">Loading risk data...</div>
+    return <LoadingSpinner message="Loading risk data..." />
   }
-
-  const bgClass = theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
-  const textClass = theme === 'dark' ? 'text-white' : 'text-zinc-900'
-  const cardBgClass = theme === 'dark' ? 'bg-zinc-800/50' : 'bg-zinc-50'
-  const subTextClass = theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'
 
   return (
     <div className="space-y-6">
@@ -174,13 +170,13 @@ export const RiskDashboard = ({ theme }: RiskDashboardProps) => {
           <div className="h-[250px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={riskData?.win_loss_distribution || []}>
-                <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#27272a' : '#e4e4e7'} vertical={false} />
-                <XAxis dataKey="range" stroke={theme === 'dark' ? '#71717a' : '#52525b'} fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke={theme === 'dark' ? '#71717a' : '#52525b'} fontSize={12} tickLine={false} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridColor} vertical={false} />
+                <XAxis dataKey="range" stroke={chartTheme.axisColor} fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis stroke={chartTheme.axisColor} fontSize={12} tickLine={false} axisLine={false} />
                 <Tooltip 
                   contentStyle={{ 
-                    backgroundColor: theme === 'dark' ? '#18181b' : '#fff', 
-                    border: `1px solid ${theme === 'dark' ? '#27272a' : '#e4e4e7'}`,
+                    backgroundColor: chartTheme.tooltipBg, 
+                    border: `1px solid ${chartTheme.tooltipBorder}`,
                     borderRadius: '8px'
                   }}
                 />

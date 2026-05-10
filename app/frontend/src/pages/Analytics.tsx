@@ -1,13 +1,15 @@
 import { useMemo } from 'react'
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell, AreaChart, Area
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, Cell
 } from 'recharts'
 import { 
-  TrendingUp, TrendingDown, Target, Activity, Clock, Calendar,
+  Activity, Clock, Calendar,
   BarChart3, PieChart, ArrowUpDown
 } from 'lucide-react'
 import { useCurrency } from '../hooks/useCurrency'
+import { useThemeClasses, useChartTheme } from '../utils/theme'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 
 interface AnalyticsProps {
   trades: any[]
@@ -16,11 +18,9 @@ interface AnalyticsProps {
 }
 
 export const Analytics = ({ trades, summary, theme }: AnalyticsProps) => {
-  const { format, currency, rate } = useCurrency()
-
-  const convertValue = (value: number) => {
-    return currency === 'INR' ? value * rate : value
-  }
+  const { format, convert } = useCurrency()
+  const { bgClass, textClass, cardBgClass, subTextClass } = useThemeClasses(theme)
+  const chartTheme = useChartTheme(theme)
 
   const analyticsData = useMemo(() => {
     if (!trades.length) return null
@@ -102,16 +102,9 @@ export const Analytics = ({ trades, summary, theme }: AnalyticsProps) => {
 
   if (!analyticsData) {
     return (
-      <div className="flex items-center justify-center h-64 text-zinc-500 italic">
-        No trade data available for analytics.
-      </div>
+      <LoadingSpinner message="No trade data available for analytics." />
     )
   }
-
-  const bgClass = theme === 'dark' ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-zinc-200'
-  const textClass = theme === 'dark' ? 'text-white' : 'text-zinc-900'
-  const subTextClass = theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'
-  const cardBgClass = theme === 'dark' ? 'bg-zinc-900/50' : 'bg-zinc-50'
 
   return (
     <div className="space-y-6">
@@ -189,13 +182,13 @@ export const Analytics = ({ trades, summary, theme }: AnalyticsProps) => {
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={analyticsData.byHour}>
-                <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#27272a' : '#e4e4e7'} vertical={false} />
-                <XAxis dataKey="hour" stroke={theme === 'dark' ? '#71717a' : '#52525b'} fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke={theme === 'dark' ? '#71717a' : '#52525b'} fontSize={12} tickLine={false} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridColor} vertical={false} />
+                <XAxis dataKey="hour" stroke={chartTheme.axisColor} fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke={chartTheme.axisColor} fontSize={12} tickLine={false} axisLine={false} />
                 <Tooltip 
                   contentStyle={{ 
-                    backgroundColor: theme === 'dark' ? '#18181b' : '#fff', 
-                    border: `1px solid ${theme === 'dark' ? '#27272a' : '#e4e4e7'}`,
+                    backgroundColor: chartTheme.tooltipBg, 
+                    border: `1px solid ${chartTheme.tooltipBorder}`,
                     borderRadius: '8px'
                   }}
                 />
@@ -216,13 +209,13 @@ export const Analytics = ({ trades, summary, theme }: AnalyticsProps) => {
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={analyticsData.byDay}>
-                <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#27272a' : '#e4e4e7'} vertical={false} />
-                <XAxis dataKey="day" stroke={theme === 'dark' ? '#71717a' : '#52525b'} fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke={theme === 'dark' ? '#71717a' : '#52525b'} fontSize={12} tickLine={false} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridColor} vertical={false} />
+                <XAxis dataKey="day" stroke={chartTheme.axisColor} fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke={chartTheme.axisColor} fontSize={12} tickLine={false} axisLine={false} />
                 <Tooltip 
                   contentStyle={{ 
-                    backgroundColor: theme === 'dark' ? '#18181b' : '#fff', 
-                    border: `1px solid ${theme === 'dark' ? '#27272a' : '#e4e4e7'}`,
+                    backgroundColor: chartTheme.tooltipBg, 
+                    border: `1px solid ${chartTheme.tooltipBorder}`,
                     borderRadius: '8px'
                   }}
                 />

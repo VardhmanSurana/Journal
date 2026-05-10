@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Brain, Heart, Target, AlertTriangle, Award, TrendingUp, TrendingDown } from 'lucide-react'
+import { Brain, Heart, AlertTriangle, Award, TrendingUp, TrendingDown } from 'lucide-react'
+import { useThemeClasses } from '../utils/theme'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 
 interface PsychologyProps {
   trades: any[]
@@ -8,6 +10,7 @@ interface PsychologyProps {
 
 export const Psychology = ({ trades, theme }: PsychologyProps) => {
   const [selectedStrategy, setSelectedStrategy] = useState<string>('all')
+  const { bgClass, textClass, cardBgClass, subTextClass } = useThemeClasses(theme)
 
   const psychologyData = useMemo(() => {
     if (!trades.length) return null
@@ -97,16 +100,9 @@ export const Psychology = ({ trades, theme }: PsychologyProps) => {
 
   if (!psychologyData) {
     return (
-      <div className="flex items-center justify-center h-64 text-zinc-500 italic">
-        No trade data available for psychology analysis.
-      </div>
+      <LoadingSpinner message="No trade data available for psychology analysis." />
     )
   }
-
-  const bgClass = theme === 'dark' ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-zinc-200'
-  const textClass = theme === 'dark' ? 'text-white' : 'text-zinc-900'
-  const cardBgClass = theme === 'dark' ? 'bg-zinc-900/50' : 'bg-zinc-50'
-  const subTextClass = theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'
 
   return (
     <div className="space-y-6">

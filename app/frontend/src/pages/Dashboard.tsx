@@ -1,8 +1,11 @@
 import { useState, useMemo } from 'react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie, AreaChart, Area } from 'recharts'
-import { TrendingUp, TrendingDown, Target, Activity, ShieldAlert, Wallet as WalletIcon, History, TrendingDownIcon, ArrowUpRight, ArrowDownRight, Clock, Zap, Newspaper } from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { TrendingUp, TrendingDown, Target, Activity, History, ArrowUpRight, ArrowDownRight, Clock, Zap, Newspaper } from 'lucide-react'
 import { useCurrency } from '../hooks/useCurrency'
+import { useThemeClasses, useChartTheme } from '../utils/theme'
 import { PerformanceCalendar } from '../components/Calendar'
+import { LoadingSpinner } from '../components/LoadingSpinner'
+import { EmptyStateCard } from '../components/EmptyState'
 
 interface DashboardProps {
   summary: any
@@ -13,7 +16,9 @@ interface DashboardProps {
 }
 
 export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' }: DashboardProps) => {
-  const { format, currency, rate } = useCurrency()
+  const { format, currency, rate, convert } = useCurrency()
+  const { bgClass, textClass, cardBgClass, subTextClass } = useThemeClasses(theme)
+  const chartTheme = useChartTheme(theme)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   
   // Hooks
@@ -59,19 +64,12 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
   }, [summary?.cumulative_pnl, currency, rate])
 
   if (!summary) return (
-    <div className="flex items-center justify-center h-64 text-zinc-500 italic">
-       Syncing initial data...
-    </div>
+    <LoadingSpinner message="Syncing initial data..." />
   )
-
-  const pieData = [
-    { name: 'Winners', value: summary.winners, color: '#10b981' },
-    { name: 'Losers', value: summary.losers, color: '#ef4444' }
-  ]
 
   const convertedCumulativePnl = summary.cumulative_pnl.map((d: any) => ({
     ...d,
-    value: currency === 'INR' ? d.value * rate : d.value
+    value: convert(d.value)
   }))
 
   return (
@@ -148,9 +146,7 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
                 </div>
               </div>
             )) : (
-              <div className="text-center py-10 text-zinc-500 italic bg-zinc-900/20 rounded-xl border border-dashed border-zinc-800">
-                No active positions currently.
-              </div>
+              <EmptyStateCard message="No active positions currently." />
             )}
           </div>
         </div>
@@ -200,7 +196,11 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
                 <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
                 <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '8px' }}
+                  contentStyle={{ 
+                    backgroundColor: chartTheme.tooltipBg, 
+                    border: `1px solid ${chartTheme.tooltipBorder}`, 
+                    borderRadius: '8px' 
+                  }}
                   itemStyle={{ color: '#fafafa' }}
                 />
                 <Line type="monotone" dataKey="value" stroke="#fafafa" strokeWidth={2} dot={false} />

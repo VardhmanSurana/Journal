@@ -48,6 +48,7 @@ function AppContent() {
   const [reviewingTrade, setReviewingTrade] = useState<Trade | null>(null)
   const [alerts, setAlerts] = useState<any[]>([])
   const [showAlerts, setShowAlerts] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const { format } = useCurrency()
   const { theme, toggleTheme } = useTheme()
 
@@ -117,6 +118,8 @@ function AppContent() {
         setActiveTab={setActiveTab} 
         onSync={handleSync}
         isSyncing={loading}
+        collapsed={sidebarCollapsed}
+        setCollapsed={setSidebarCollapsed}
       />
 
       <main className="flex-1 h-screen overflow-y-auto">

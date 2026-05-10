@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import { FileText, Download, Calendar, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react'
+import { useThemeClasses } from '../utils/theme'
+import { API_BASE } from '../config/api'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 
 interface TaxReportProps {
   theme: 'dark' | 'light'
 }
-
-const API_BASE = 'http://localhost:8000/api'
 
 interface TaxYear {
   year: number
@@ -24,6 +25,7 @@ export const TaxReport = ({ theme }: TaxReportProps) => {
   const [taxYears, setTaxYears] = useState<TaxYear[]>([])
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const { bgClass, textClass, cardBgClass, subTextClass } = useThemeClasses(theme)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -59,13 +61,8 @@ export const TaxReport = ({ theme }: TaxReportProps) => {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64 text-zinc-500">Loading tax data...</div>
+    return <LoadingSpinner message="Loading tax data..." />
   }
-
-  const bgClass = theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'
-  const textClass = theme === 'dark' ? 'text-white' : 'text-zinc-900'
-  const cardBgClass = theme === 'dark' ? 'bg-zinc-800/50' : 'bg-zinc-50'
-  const subTextClass = theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'
 
   const totalTurnover = taxYears.reduce((sum, y) => sum + y.turnover, 0)
   const totalTax = taxYears.reduce((sum, y) => sum + y.estimated_tax, 0)

@@ -2,7 +2,17 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from project root (parent of app/backend)
+# First try root .env, then fall back to local .env
+possible_paths = [
+    Path(__file__).parent.parent.parent / ".env",
+    Path(__file__).parent.parent / ".env",
+]
+
+for env_path in possible_paths:
+    if env_path.exists():
+        load_dotenv(env_path, override=True)
+        break
 
 class Config:
     def __init__(self) -> None:

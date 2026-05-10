@@ -6,6 +6,19 @@
 # Get the absolute path of the project root
 ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+# Load environment variables from root .env using export
+if [ -f "$ROOT_DIR/.env" ]; then
+    while IFS='=' read -r key value; do
+        # Skip comments and empty lines
+        [[ "$key" =~ ^# ]] && continue
+        [[ -z "$key" ]] && continue
+        # Remove leading/trailing whitespace from key
+        key=$(echo "$key" | xargs)
+        # Export the variable (with quotes to handle values with spaces)
+        export "$key"="$value"
+    done < "$ROOT_DIR/.env"
+fi
+
 # Function to kill background processes on exit
 cleanup() {
     echo ""

@@ -25,19 +25,20 @@ def init_db():
         cursor.execute("PRAGMA table_info(trades)")
         columns = [row[1] for row in cursor.fetchall()]
         
-        # Add missing columns one by one
+        # Add missing columns one by one.
+        # We use hardcoded ALTER TABLE statements to avoid dynamic SQL construction.
         migrations = [
-            ("pre_plan", "TEXT"),
-            ("risk_pct", "REAL DEFAULT 0"),
-            ("actual_risk_pct", "REAL DEFAULT 0"),
-            ("stop_loss", "REAL DEFAULT 0"),
-            ("take_profit", "REAL DEFAULT 0")
+            ("pre_plan", "ALTER TABLE trades ADD COLUMN pre_plan TEXT"),
+            ("risk_pct", "ALTER TABLE trades ADD COLUMN risk_pct REAL DEFAULT 0"),
+            ("actual_risk_pct", "ALTER TABLE trades ADD COLUMN actual_risk_pct REAL DEFAULT 0"),
+            ("stop_loss", "ALTER TABLE trades ADD COLUMN stop_loss REAL DEFAULT 0"),
+            ("take_profit", "ALTER TABLE trades ADD COLUMN take_profit REAL DEFAULT 0")
         ]
         
-        for col_name, col_type in migrations:
+        for col_name, query in migrations:
             if col_name not in columns:
                 print(f"Migrating: Adding column {col_name} to trades table...")
-                cursor.execute(f"ALTER TABLE trades ADD COLUMN {col_name} {col_type}")
+                cursor.execute(query)
         
         conn.commit()
         conn.close()

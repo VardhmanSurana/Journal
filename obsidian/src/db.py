@@ -7,25 +7,6 @@ from src.models import Trade
 
 DB_PATH = Path(__file__).parent.parent / "journal.db"
 
-# ---------------------------------------------------------------------------
-# New columns added in v2 of the schema.
-# Applied with try/except so existing databases are migrated non-destructively.
-# ---------------------------------------------------------------------------
-_MIGRATION_COLUMNS: list[tuple[str, str]] = [
-    ("gst_in_commission",  "REAL DEFAULT 0"),
-    ("net_fee_excl_gst",   "REAL DEFAULT 0"),
-    ("income_tax",         "REAL DEFAULT 0"),
-    ("profit_after_tax",   "REAL DEFAULT 0"),
-    ("entry_notional",     "REAL DEFAULT 0"),
-    ("exit_notional",      "REAL DEFAULT 0"),
-    ("entry_role",         "TEXT DEFAULT ''"),
-    ("exit_role",          "TEXT DEFAULT ''"),
-    ("settling_asset",     "TEXT DEFAULT ''"),
-    ("funding_fees",       "REAL DEFAULT 0"),
-    ("account_name",       "TEXT DEFAULT 'Default'"),
-]
-
-
 def init_db() -> None:
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("""
@@ -63,10 +44,24 @@ def init_db() -> None:
             )
         """)
 
-        # Non-destructive migration for pre-existing databases
-        for col, col_type in _MIGRATION_COLUMNS:
+        # Non-destructive migration for pre-existing databases.
+        # We use hardcoded ALTER TABLE statements to avoid dynamic SQL construction.
+        migrations = [
+            "ALTER TABLE trades ADD COLUMN gst_in_commission REAL DEFAULT 0",
+            "ALTER TABLE trades ADD COLUMN net_fee_excl_gst REAL DEFAULT 0",
+            "ALTER TABLE trades ADD COLUMN income_tax REAL DEFAULT 0",
+            "ALTER TABLE trades ADD COLUMN profit_after_tax REAL DEFAULT 0",
+            "ALTER TABLE trades ADD COLUMN entry_notional REAL DEFAULT 0",
+            "ALTER TABLE trades ADD COLUMN exit_notional REAL DEFAULT 0",
+            "ALTER TABLE trades ADD COLUMN entry_role TEXT DEFAULT ''",
+            "ALTER TABLE trades ADD COLUMN exit_role TEXT DEFAULT ''",
+            "ALTER TABLE trades ADD COLUMN settling_asset TEXT DEFAULT ''",
+            "ALTER TABLE trades ADD COLUMN funding_fees REAL DEFAULT 0",
+            "ALTER TABLE trades ADD COLUMN account_name TEXT DEFAULT 'Default'",
+        ]
+        for query in migrations:
             try:
-                conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {col_type}")
+                conn.execute(query)
             except sqlite3.OperationalError:
                 pass  # Column already exists — safe to ignore
 

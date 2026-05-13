@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
-import { History, TrendingUp, TrendingDown, Sun, Moon, Bell } from 'lucide-react'
+import { History, TrendingUp, TrendingDown, Sun, Moon, Bell, AlertTriangle, Activity } from 'lucide-react'
 import { Dashboard } from './pages/Dashboard'
 import { Analytics } from './pages/Analytics'
 import { DailyReviews } from './pages/DailyReviews'
 import { RiskDashboard } from './pages/Risk'
 import { TaxReport } from './pages/TaxReport'
+import { SafetyCenter } from './pages/Safety'
 import { CurrencyProvider, useCurrency } from './hooks/useCurrency'
 import { CurrencyToggle } from './components/CurrencyToggle'
 import { Sidebar } from './components/Sidebar'
@@ -14,6 +15,8 @@ import { TradeFilters } from './components/TradeFilters'
 import { TradeReviewModal } from './components/TradeReviewModal'
 import { ThemeProvider, useTheme } from './hooks/useTheme'
 import { API_BASE } from './config/api'
+import { ConnectionPanel } from './components/ConnectionPanel'
+import { normalizeError } from './utils/errorNormalization'
 
 interface Trade {
   id: number
@@ -41,13 +44,20 @@ interface ConnectionHealth {
   last_success_at?: string
   is_stale: boolean
   stale_seconds?: number
-  last_error?: string
+  region: string
   safety: {
     api_key_configured: boolean
-    api_secret_configured: boolean
+    read_only_key_configured: boolean
     webhook_configured: boolean
-    deadman_switch_configured: boolean
+    deadman_switch_enabled: boolean
+    safe_mode_active: boolean
   }
+  permissions: {
+    read: boolean
+    trade: boolean
+    margin_change: boolean
+  }
+  last_error?: string
 }
 
 function AppContent() {
@@ -93,7 +103,9 @@ function AppContent() {
       await axios.post(`${API_BASE}/sync`)
       await fetchData()
     } catch (err) {
-      console.error('Error syncing:', err)
+      const normalized = normalizeError(err)
+      console.error('Error syncing:', normalized)
+      // We could show a toast here with normalized.message + normalized.action
     } finally {
       setLoading(false)
     }
@@ -150,7 +162,8 @@ function AppContent() {
               {activeTab === 'dashboard' ? 'Overview' : 
                activeTab === 'trades' ? 'History' :
                activeTab === 'analytics' ? 'Analysis' :
-               activeTab === 'reviews' ? 'Reflection' : 'Page'}
+               activeTab === 'reviews' ? 'Reflection' :
+               activeTab === 'safety' ? 'Protection' : 'Page'}
             </h2>
             <h1 className={`text-2xl font-bold ${
               theme === 'dark' ? 'text-white' : 'text-zinc-900'
@@ -158,19 +171,23 @@ function AppContent() {
               {activeTab === 'dashboard' ? 'Trading Dashboard' : 
                activeTab === 'trades' ? 'Journal Log' :
                activeTab === 'analytics' ? 'Analytics Center' :
-               activeTab === 'reviews' ? 'Daily Reviews' : 'Page'}
+               activeTab === 'reviews' ? 'Daily Reviews' :
+               activeTab === 'safety' ? 'Safety Center' : 'Page'}
             </h1>
           </div>
           
           <div className="flex items-center gap-6">
             {health && (
               <div className={`px-3 py-2 rounded-lg border text-xs ${
-                health.is_stale || health.sync_status === 'failed'
+                health.sync_status === 'failed' || (health.is_stale && health.stale_seconds !== null)
                   ? 'border-red-500/40 bg-red-500/10 text-red-300'
-                  : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                  : health.is_stale && health.stale_seconds === null
+                    ? 'border-zinc-700 bg-zinc-900/40 text-zinc-400'
+                    : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
               }`}>
                 <div className="font-semibold">
-                  {health.is_stale ? 'Stale Data' : 'Live Data'}
+                  {health.is_stale && health.stale_seconds !== null ? 'Stale Data' : 
+                   health.is_stale && health.stale_seconds === null ? 'Sync Pending' : 'Live Data'}
                 </div>
                 <div>
                   Sync: {health.sync_status}
@@ -196,18 +213,19 @@ function AppContent() {
             </div>
           </div>
         </header>
-        {health && (
-          <div className={`mx-8 mt-4 p-3 rounded-xl border text-sm ${
-            health.is_stale || health.sync_status === 'failed'
-              ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-              : 'border-zinc-700 bg-zinc-900/40 text-zinc-300'
-          }`}>
-            <span className="font-semibold">Connection Health:</span> API {health.api_status.toUpperCase()} · Sync {health.sync_status.toUpperCase()} ·
-            Webhook {health.safety.webhook_configured ? 'configured' : 'missing'} ·
-            Deadman switch {health.safety.deadman_switch_configured ? 'configured' : 'missing'}.
-            {health.last_error ? ` Last error: ${health.last_error}` : ''}
+        {health?.is_stale && (
+          <div className={`${health.stale_seconds === null ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-amber-500/10 border-b border-amber-500/20 text-amber-500'} px-4 py-1.5 flex items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-wider animate-in slide-in-from-top duration-300`}>
+            {health.stale_seconds === null ? <Activity size={12} /> : <AlertTriangle size={12} />}
+            <span>
+              {health.stale_seconds === null 
+                ? "First sync pending. Please click 'Sync Delta'." 
+                : `Stale Data Warning: Last sync was ${Math.floor(health.stale_seconds / 60)}m ago.`}
+              <span className="ml-2 opacity-60 font-normal">Positions and P&L may not be live.</span>
+            </span>
           </div>
         )}
+
+        <ConnectionPanel health={health} theme={theme} />
 
         <div className="p-8 max-w-7xl mx-auto">
           {activeTab === 'dashboard' && (
@@ -320,6 +338,10 @@ function AppContent() {
 
           {activeTab === 'tax' && (
             <TaxReport theme={theme} />
+          )}
+
+          {activeTab === 'safety' && (
+            <SafetyCenter theme={theme} />
           )}
         </div>
       </main>

@@ -64,6 +64,13 @@ echo "✅ Backend is live at http://localhost:8000"
 # 2. Start Frontend
 echo "💻 Starting Frontend (Vite)..."
 cd "$ROOT_DIR/app/frontend" || { echo "❌ Could not find app/frontend directory"; exit 1; }
+
+# Install dependencies if node_modules is missing
+if [ ! -d "node_modules" ]; then
+    echo "📦 node_modules missing, running bun install..."
+    bun install
+fi
+
 bun run dev
 
 # If bun run dev exits, cleanup will be called via the trap

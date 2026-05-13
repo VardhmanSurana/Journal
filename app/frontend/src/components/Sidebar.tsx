@@ -37,6 +37,7 @@ export const Sidebar = ({ activeTab, setActiveTab, onSync, isSyncing, collapsed,
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'reviews', label: 'Daily Reviews', icon: BookOpen },
     { id: 'tax', label: 'Tax Report', icon: FileText },
+    { id: 'safety', label: 'Safety Center', icon: Settings },
   ]
 
   return (

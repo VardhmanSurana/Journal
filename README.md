@@ -2,39 +2,42 @@
 
 Automated crypto trading journal for Delta Exchange users with full-stack web dashboard and Obsidian vault integration.
 
-## Project Structure
+## Features
 
-```
-.
-├── .env.example          # Environment configuration template
-├── start.sh              # Start both frontend & backend
-├── README.md             # This file
-│
-├── app/                  # Full-stack web application
-│   ├── frontend/         # React + TypeScript dashboard
-│   │   ├── src/
-│   │   │   ├── pages/    # Dashboard, Analytics, Tax, etc.
-│   │   │   ├── components/  # Sidebar, Charts, Modals
-│   │   │   ├── hooks/    # useCurrency, useTheme
-│   │   │   └── config/   # API configuration
-│   │   └── package.json
-│   │
-│   └── backend/          # FastAPI REST API
-│       ├── api/          # Routes, Models, Client
-│       ├── main.py       # API entry point
-│       └── pyproject.toml
-│
-└── obsidian/             # Original Obsidian vault sync (optional)
-    ├── src/              # Models, Writer, Client
-    ├── main.py           # CLI entry point
-    └── pyproject.toml
-```
+### 📊 Full-Stack Dashboard (React)
+- **Real-time Overview** - Open positions, current equity curve, and latest market news.
+- **Trade History** - Complete journal with event-driven FIFO matching (aggregates partial fills).
+- **Advanced Risk Metrics** - Sharpe Ratio, Sortino Ratio, Calmar Ratio, and Drawdown tracking.
+- **Health & Safety Panel** - Live sync status, API connectivity check, and staleness detection.
+- **Operational Safety** - Toggle **Safe Mode** to disable risk actions and manage **Deadman Switch**.
+- **Indian Tax Compliance** - GST extraction, slab-rate tax calculations, and turnover tracking for audit thresholds.
+- **Dynamic Currency** - Instantly toggle between USD and INR across all reports.
+
+### 📝 Obsidian Integration (CLI)
+- **Markdown Journaling** - Automatically generate detailed trade reports in your Obsidian vault.
+- **Interactive Dashboards** - DataviewJS + Chart.js powered views with live currency switching.
+- **AI Trading Coach** - Optional Gemini integration to analyze performance and provide actionable feedback.
+
+### 🛡️ Security & Resilience
+- **HMAC-SHA256 Auth** - Secure interaction with Delta Exchange API.
+- **Credential Protection** - Secrets are redacted in logs and never exposed in traces.
+- **Resilient Client** - Automatic exponential backoff for rate limits and 401 timestamp drift correction.
+
+## Project Status
+
+The project is currently in active development.
+- **Phase 1 (Security Hardening):** 90% Complete (Input validation, broad exception removal, safety metadata).
+- **Phase 2 (Functional UX):** 80% Complete (Health endpoints, sync lifecycle tracking).
+- **Phase 3 (UI/UX Elevation):** Ongoing (Health panel, action safety gating, trust-oriented microcopy).
+
+See [docs/implementation_plan.md](docs/implementation_plan.md) for the full roadmap.
 
 ## Prerequisites
 
 - **Node.js runtime**: [Bun](https://bun.sh) (v1.3+) recommended
 - **Python**: v3.11+ with [uv](https://github.com/astral-sh/uv)
-- **Delta Exchange**: API keys from https://www.delta.exchange/app/account/api
+- **Delta Exchange**: API keys from [delta.exchange](https://www.delta.exchange/app/account/api)
+- **Docker**: (Optional) For containerized deployment
 
 ## Quick Start
 
@@ -45,96 +48,50 @@ Automated crypto trading journal for Delta Exchange users with full-stack web da
 cp .env.example .env
 
 # Edit .env with your actual values
-# - DELTA_API_KEY / DELTA_API_SECRET
-# - VAULT_PATH (for Obsidian sync)
-# - INCOME_TAX_SLAB (your tax slab rate)
 ```
 
-### 2. Run the App
+### 2. Run the App (Local)
 
 ```bash
 # Start both frontend and backend
 ./start.sh
 ```
 
-This will:
-- Start the backend API at `http://localhost:8000`
-- Start the frontend at `http://localhost:5173`
-- Press `Ctrl+C` to stop both services
+- **Backend API:** `http://localhost:8000`
+- **Frontend Dashboard:** `http://localhost:5173`
 
-### 3. Alternative: Run Separately
+### 3. Run with Docker
 
-**Backend only:**
+Alternatively, you can run the entire stack using Docker Compose:
+
 ```bash
-cd app/backend
-uv sync
-uv run python main.py
+docker compose up --build -d
 ```
 
-**Frontend only:**
-```bash
-cd app/frontend
-bun install
-bun run dev
-```
+- **Dashboard:** `http://localhost` (Port 80)
+- **Backend API:** `http://localhost:8000`
 
-## Features
+## Troubleshooting
 
-### Frontend (React Dashboard)
-- **Dashboard** - Overview with open positions, equity curve, recent trades
-- **Trade History** - Complete journal with filtering and search
-- **Analytics** - P&L by hour/day, win rate by direction, duration analysis
-- **Risk & Positions** - Sharpe/Sortino ratios, position sizing calculator
-- **Tax Report** - Annual turnover, GST breakdown, audit threshold alerts
-- **Daily Reviews** - Track mood, discipline score, mistakes, lessons
-- **Theme** - Dark/Light mode toggle
-- **Currency** - USD/INR conversion
+### 🔑 API Key: IP Whitelist Error
+If you see a `401 Unauthorized` error in the logs mentioning `ip_not_whitelisted_for_api_key`, it means your Delta Exchange API key has IP restrictions enabled.
 
-### Backend (FastAPI)
-- **REST API** - Trades, summary, positions, risk metrics
-- **Trade Reconstruction** - Event-driven FIFO matching
-- **Tax Calculations** - Slab-rate tax, GST extraction, audit thresholds
-- **News Feed** - CryptoCompare + RSS aggregation
-
-### Obsidian Sync (Optional)
-```bash
-cd obsidian
-uv run main.py --dry-run   # Preview without writing files
-uv run main.py             # Full sync to Obsidian vault
-```
-
-## Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DELTA_API_KEY` | Delta Exchange API key | Yes |
-| `DELTA_API_SECRET` | Delta Exchange API secret | Yes |
-| `DELTA_REGION` | "india" or "global" | Yes |
-| `INCOME_TAX_SLAB` | Your income tax slab rate (e.g., 0.30) | Yes |
-| `VAULT_PATH` | Path to Obsidian vault (Obsidian sync only) | No |
-| `VITE_API_URL` | Backend URL (frontend only) | No |
+**To fix this:**
+1. **Identify your Public IP:**
+   - If running locally: Visit [ifconfig.me](https://ifconfig.me) in your browser.
+   - If running in Docker: Run `docker compose exec backend curl ifconfig.me`.
+2. **Update Delta Settings:**
+   - Go to [Delta Exchange API Settings](https://www.delta.exchange/app/account/api).
+   - Find your API key and either **add your IP** to the whitelist or **disable IP restriction** (recommended for dynamic IPs).
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-------------|
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS 4 |
-| Backend | Python 3.11+, FastAPI, SQLModel, Uvicorn |
-| Database | SQLite (local) |
-| Runtime | Bun (frontend), uv (Python) |
-
-## Development
-
-```bash
-# Frontend lint
-cd app/frontend && bun run lint
-
-# Backend tests (if any)
-cd app/backend && uv run pytest
-
-# Full rebuild
-cd app/frontend && bun run build
-```
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS 4, Lucide Icons |
+| Backend | Python 3.11+, FastAPI, SQLModel (SQLite), Pydantic v2 |
+| CLI / Sync | uv (Python), Bun (Frontend) |
+| Integration | Obsidian, DataviewJS, Chart.js, Google Gemini |
 
 ## License
 

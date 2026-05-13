@@ -21,21 +21,22 @@ class Config:
         self.GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
         self.REGION: str = os.getenv("DELTA_REGION", "india")
         
-        # Vertex AI settings
-        self.USE_VERTEX_AI: bool = os.getenv("USE_VERTEX_AI", "false").lower() == "true"
-        self.VERTEX_PROJECT_ID: str = os.getenv("VERTEX_PROJECT_ID", "")
-        self.VERTEX_LOCATION: str = os.getenv("VERTEX_LOCATION", "us-central1")
-        self.VERTEX_MODEL: str = os.getenv("VERTEX_MODEL", "gemini-1.5-flash")
-
-        self.DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./app.db")
-        self.INCOME_TAX_SLAB: float = float(os.getenv("INCOME_TAX_SLAB", "0.30"))
-        self.PAGE_LIMIT: int = int(os.getenv("PAGE_LIMIT", "100"))
+        # Hardcoded defaults (Removed from .env to simplify)
+        self.DATABASE_URL: str = "sqlite:///./app.db"
+        self.INCOME_TAX_SLAB: float = 0.30
+        self.PAGE_LIMIT: int = 100
         
         # Automation & Alerts
         self.WEBHOOK_URL: str = os.getenv("WEBHOOK_URL", "")
         self.PNL_ALERT_THRESHOLD: float = float(os.getenv("PNL_ALERT_THRESHOLD", "100.0"))
         
-        # External APIs
+        # Security & Compliance
+        self.READ_ONLY_KEY: str = os.getenv("DELTA_READ_ONLY_KEY", self.API_KEY)
+        self.READ_ONLY_SECRET: str = os.getenv("DELTA_READ_ONLY_SECRET", self.API_SECRET)
+        self.SAFE_MODE: bool = os.getenv("SAFE_MODE", "true").lower() == "true"
+        self.DEADMAN_SWITCH_ENABLED: bool = os.getenv("DEADMAN_SWITCH_ENABLED", "false").lower() == "true"
+        
+        # External APIs (Kept as requested)
         self.CRYPTOCOMPARE_API_KEY: str = os.getenv("CRYPTOCOMPARE_API_KEY", "")
 
     @property

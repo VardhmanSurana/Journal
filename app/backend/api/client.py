@@ -39,39 +39,50 @@ class DeltaAPIError(Exception):
 # Auth helpers
 # ---------------------------------------------------------------------------
 
-def _sign(method: str, path: str, query: str, body: str, timestamp: str) -> str:
+def _sign(method: str, path: str, query: str, body: str, timestamp: str, read_only: bool = False) -> str:
     """Generate HMAC-SHA256 signature as required by Delta Exchange."""
     message = method + timestamp + path
     if query:
         message += "?" + query
     message += body
+    
+    secret = config.READ_ONLY_SECRET if read_only else config.API_SECRET
     return hmac.new(
-        config.API_SECRET.encode(),
+        secret.encode(),
         message.encode(),
         hashlib.sha256,
     ).hexdigest()
 
 
-def _headers(method: str, path: str, query: str = "", body: str = "") -> dict[str, str]:
+def _headers(method: str, path: str, query: str = "", body: str = "", read_only: bool = False) -> dict[str, str]:
     timestamp = str(int(time.time()))
-    signature = _sign(method, path, query, body, timestamp)
+    signature = _sign(method, path, query, body, timestamp, read_only=read_only)
+    key = config.READ_ONLY_KEY if read_only else config.API_KEY
     return {
         "Accept": "application/json",
-        "api-key": config.API_KEY,
+        "api-key": key,
         "timestamp": timestamp,
         "signature": signature,
     }
+
+
+def _log_redacted(url: str, headers: dict[str, str]) -> None:
+    """Log request info while redacting secrets."""
+    redacted_hdrs = {k: ("***" if k.lower() in ["api-key", "signature", "authorization"] else v) for k, v in headers.items()}
+    safe_url = url.split("?")[0]
+    print(f"DEBUG: Delta API Request to {safe_url} | Headers: {redacted_hdrs}")
 
 
 # ---------------------------------------------------------------------------
 # Core request — with retry/backoff (D5) and safe error wrapping (S1)
 # ---------------------------------------------------------------------------
 
-def _get(path: str, params: dict[str, Any] | None = None, public: bool = False) -> dict[str, Any]:
+def _get(path: str, params: dict[str, Any] | None = None, public: bool = False, read_only: bool = True) -> dict[str, Any]:
     """
     Make an authenticated (or public) GET request with exponential backoff.
 
     Retries on 429 (rate-limit) and transient 5xx errors up to _MAX_RETRIES times.
+    Handles 401 timestamp drift by re-attempting once.
     Raises DeltaAPIError on persistent failure (S1: no auth headers in traces).
     """
     params = params or {}
@@ -79,12 +90,26 @@ def _get(path: str, params: dict[str, Any] | None = None, public: bool = False) 
     url = f"{config.base_url}{path}"
     hdrs = {"Accept": "application/json"}
     if not public:
-        hdrs.update(_headers("GET", f"/v2{path}", query))
+        hdrs.update(_headers("GET", f"/v2{path}", query, read_only=read_only))
 
     last_exc: Exception | None = None
     for attempt in range(_MAX_RETRIES + 1):
         try:
+            _log_redacted(url, hdrs)
             response = requests.get(url, params=params, headers=hdrs, timeout=15)
+
+            # Handle Rate Limits (E)
+            if response.status_code == 429 and attempt < _MAX_RETRIES:
+                wait = float(response.headers.get("Retry-After", _BACKOFF_BASE * (2 ** attempt)))
+                print(f"WARNING: Rate limited. Retrying in {wait}s...")
+                time.sleep(wait)
+                continue
+
+            # Handle Timestamp Drift (F)
+            if response.status_code == 401 and "timestamp" in response.text.lower() and attempt == 0:
+                print("WARNING: Auth failed due to timestamp drift. Re-syncing clock and retrying...")
+                hdrs.update(_headers("GET", f"/v2{path}", query, read_only=read_only))
+                continue
 
             if response.status_code in _RETRY_STATUSES and attempt < _MAX_RETRIES:
                 wait = _BACKOFF_BASE * (2 ** attempt)
@@ -207,6 +232,22 @@ def fetch_tickers(underlying_asset_symbols: str = "") -> list[dict]:
         params["underlying_asset_symbols"] = underlying_asset_symbols
     data = _get("/tickers", params)
     return data.get("result", [])
+
+
+def update_deadman_switch(timeout: int) -> dict[str, Any]:
+    """
+    Update Deadman Switch timeout (in seconds).
+    If no heartbeat is received within this time, all open orders are cancelled.
+    """
+    path = "/orders/deadman_switch"
+    body = {"timeout": timeout}
+    hdrs = _headers("POST", f"/v2{path}", body=str(body), read_only=False)
+    
+    url = f"{config.base_url}{path}"
+    response = requests.post(url, json=body, headers=hdrs, timeout=10)
+    if not response.ok:
+        raise DeltaAPIError(response.status_code, url, response.text[:200])
+    return response.json()
 
 
 # ---------------------------------------------------------------------------

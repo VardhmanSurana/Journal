@@ -3,26 +3,50 @@ from fastapi import Request
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router
-from api.database import init_db
+import asyncio
+from api.database import init_db, engine
+from api.sync import run_sync
+from sqlmodel import Session
 
 app = FastAPI(title="Delta Journal API")
 
 # Setup CORS for the React app
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+async def background_heartbeat():
+    """Periodic background sync every hour."""
+    while True:
+        try:
+            print("Running periodic background sync...")
+            with Session(engine) as session:
+                run_sync(session)
+        except Exception as e:
+            print(f"Background heartbeat sync failed: {e}")
+        
+        # Wait for 1 hour (3600 seconds)
+        await asyncio.sleep(3600)
+
 @app.on_event("startup")
-def on_startup():
+async def on_startup():
     init_db()
+    # Trigger initial sync in the background so startup isn't blocked
+    def initial_sync():
+        try:
+            print("Running initial startup sync...")
+            with Session(engine) as session:
+                run_sync(session)
+        except Exception as e:
+            print(f"Initial startup sync failed: {e}")
+    
+    # Run initial sync and start heartbeat
+    asyncio.create_task(background_heartbeat())
+    asyncio.create_task(asyncio.to_thread(initial_sync))
 
 app.include_router(router, prefix="/api")
 

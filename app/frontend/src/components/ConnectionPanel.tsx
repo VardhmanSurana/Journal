@@ -9,6 +9,10 @@ interface ConnectionHealth {
   stale_seconds?: number;
   region: string;
   last_error?: string;
+  rate_limit?: {
+    current_quota: number;
+    remaining_time_in_milliseconds: number;
+  };
 }
 
 interface ConnectionPanelProps {
@@ -74,6 +78,30 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ health, theme 
         </div>
 
         <div className="flex items-center gap-3">
+          {health.rate_limit && (
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium tabular-nums ${
+              theme === 'dark'
+                ? 'bg-zinc-900/30 border-zinc-800 text-zinc-400'
+                : 'bg-zinc-50 border-zinc-200 text-zinc-650'
+            }`}>
+              <span className="text-[10px] font-black text-zinc-550 uppercase">API Limit:</span>
+              <span className={`font-bold font-mono ${health.rate_limit.current_quota < 1000 ? 'text-red-400' : 'text-emerald-400'}`}>
+                {health.rate_limit.current_quota}
+              </span>
+              <div className={`w-12 h-1.5 rounded-full overflow-hidden ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'}`}>
+                <div 
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    health.rate_limit.current_quota < 1000 ? 'bg-red-500' : 'bg-emerald-500'
+                  }`} 
+                  style={{ width: `${Math.min(100, (health.rate_limit.current_quota / 10000) * 100)}%` }}
+                />
+              </div>
+              <span className="text-[9px] text-zinc-500 font-mono">
+                ({Math.max(0, Math.round(health.rate_limit.remaining_time_in_milliseconds / 1000))}s reset)
+              </span>
+            </div>
+          )}
+
           <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-colors ${
             theme === 'dark'
               ? 'bg-zinc-800/50 border-zinc-700/50 text-zinc-400'
@@ -84,6 +112,7 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ health, theme 
           </div>
         </div>
       </div>
+
 
       {(health.is_stale || health.last_error) && (
         <div className={`mt-3 pt-3 border-t flex items-start gap-2 text-xs transition-colors ${

@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react'
+import axios from 'axios'
 import { X, TrendingUp, TrendingDown, Calendar, Clock, DollarSign, ArrowRight, Target, BookOpen, Image as ImageIcon } from 'lucide-react'
 import { useCurrency } from '../hooks/useCurrency'
 import { API_BASE } from '../config/api'
@@ -11,6 +13,22 @@ interface TradeDetailModalProps {
 
 export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: TradeDetailModalProps) => {
   const { format } = useCurrency()
+  const [orderbook, setOrderbook] = useState<{ buy: any[]; sell: any[] } | null>(null)
+  const [obLoading, setObLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchOrderbook = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/products/orderbook?symbol=${trade.symbol}`)
+        setOrderbook(res.data)
+      } catch (err) {
+        console.error('Error fetching orderbook:', err)
+      } finally {
+        setObLoading(false)
+      }
+    }
+    fetchOrderbook()
+  }, [trade.symbol])
 
   if (!trade) return null
 
@@ -24,7 +42,7 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       
-      <div className={`relative border rounded-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200 ${
+      <div className={`relative border rounded-2xl w-full max-w-7xl max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200 ${
         theme === 'dark' ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-zinc-200'
       }`}>
         <div className={`flex items-center justify-between p-6 border-b ${
@@ -74,7 +92,7 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
           </button>
         </div>
 
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column: Trade Metrics */}
           <div className="space-y-6">
             <div className={`text-center py-6 rounded-xl ${
@@ -226,7 +244,7 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
               </div>
               <div className="flex justify-between text-sm">
                 <span className={theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}>Total Fees (incl GST)</span>
-                <span className={`font-mono ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>-{format(Math.abs(trade.fees))}</span>
+                <span className={`font-mono ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-770'}`}>-{format(Math.abs(trade.fees))}</span>
               </div>
               <div className="flex justify-between text-sm pt-1">
                 <span className={`font-bold ${theme === 'dark' ? 'text-zinc-450' : 'text-zinc-800'}`}>Net P&L</span>
@@ -243,7 +261,108 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
             </div>
           </div>
 
+          {/* Middle Column: Live Orderbook Depth & Execution Overlay */}
+          <div className={`p-6 border rounded-2xl flex flex-col h-full ${
+            theme === 'dark' ? 'bg-zinc-900/30 border-zinc-850' : 'bg-zinc-50 border-zinc-200'
+          }`}>
+            <h3 className={`text-xs font-black uppercase tracking-widest mb-4 flex items-center gap-2 ${
+              theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'
+            }`}>
+              <BookOpen size={14} /> Live Orderbook Depth
+            </h3>
+            
+            {obLoading ? (
+              <div className="flex-1 flex flex-col items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-zinc-550" />
+                <span className="text-[10px] text-zinc-500 mt-2 font-bold uppercase">Streaming live depth...</span>
+              </div>
+            ) : orderbook ? (
+              <div className="flex-1 flex flex-col justify-between font-mono text-[11px] space-y-4">
+                {/* Sells (Asks) - Render in reverse order to place highest ask on top */}
+                <div className="space-y-1">
+                  <div className="text-[9px] uppercase font-black tracking-widest text-zinc-500 mb-1">Asks (Sells)</div>
+                  {[...(orderbook.sell || [])].slice(0, 5).reverse().map((ask: any, idx: number) => {
+                    const price = parseFloat(ask.price);
+                    const isEntryClose = Math.abs(price - trade.avg_entry) / trade.avg_entry < 0.005;
+                    const isExitClose = trade.avg_exit && Math.abs(price - trade.avg_exit) / trade.avg_exit < 0.005;
+                    
+                    return (
+                      <div key={idx} className="relative flex justify-between py-1.5 px-2 rounded hover:bg-zinc-800/20 group">
+                        <div 
+                          className="absolute inset-y-0 right-0 bg-red-500/5 transition-all" 
+                          style={{ width: `${Math.min(100, (ask.size / 5) * 100)}%` }} 
+                        />
+                        <span className="text-red-400 z-10">{format(price)}</span>
+                        <span className="text-zinc-400 z-10">{ask.size}</span>
+                        {(isEntryClose || isExitClose) && (
+                          <span className={`absolute left-2 text-[8px] font-black uppercase px-1 py-0.5 rounded z-20 ${
+                            isEntryClose ? 'bg-blue-500/20 text-blue-400' : 'bg-emerald-500/20 text-emerald-400'
+                          }`}>
+                            {isEntryClose ? 'Entry' : 'Exit'}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Current Spread Display */}
+                <div className="py-2 border-y border-zinc-800/30 text-center flex flex-col items-center">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">Spread</span>
+                  <span className="text-xs font-bold text-zinc-200">
+                    {orderbook.sell && orderbook.buy ? format(Math.abs(parseFloat(orderbook.sell[0]?.price) - parseFloat(orderbook.buy[0]?.price))) : 'N/A'}
+                  </span>
+                </div>
+
+                {/* Buys (Bids) */}
+                <div className="space-y-1">
+                  <div className="text-[9px] uppercase font-black tracking-widest text-zinc-500 mb-1">Bids (Buys)</div>
+                  {(orderbook.buy || []).slice(0, 5).map((bid: any, idx: number) => {
+                    const price = parseFloat(bid.price);
+                    const isEntryClose = Math.abs(price - trade.avg_entry) / trade.avg_entry < 0.005;
+                    const isExitClose = trade.avg_exit && Math.abs(price - trade.avg_exit) / trade.avg_exit < 0.005;
+
+                    return (
+                      <div key={idx} className="relative flex justify-between py-1.5 px-2 rounded hover:bg-zinc-800/20 group">
+                        <div 
+                          className="absolute inset-y-0 right-0 bg-emerald-500/5 transition-all" 
+                          style={{ width: `${Math.min(100, (bid.size / 5) * 100)}%` }} 
+                        />
+                        <span className="text-emerald-400 z-10">{format(price)}</span>
+                        <span className="text-zinc-400 z-10">{bid.size}</span>
+                        {(isEntryClose || isExitClose) && (
+                          <span className={`absolute left-2 text-[8px] font-black uppercase px-1 py-0.5 rounded z-20 ${
+                            isEntryClose ? 'bg-blue-500/20 text-blue-400' : 'bg-emerald-500/20 text-emerald-400'
+                          }`}>
+                            {isEntryClose ? 'Entry' : 'Exit'}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Execution Overlay Info */}
+                <div className="pt-2 text-[9px] leading-relaxed text-zinc-500 border-t border-zinc-800/30">
+                  <div className="flex justify-between">
+                    <span>Avg Entry:</span>
+                    <span className="font-bold text-zinc-350">{format(trade.avg_entry)}</span>
+                  </div>
+                  {trade.avg_exit > 0 && (
+                    <div className="flex justify-between mt-1">
+                      <span>Avg Exit:</span>
+                      <span className="font-bold text-zinc-355">{format(trade.avg_exit)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-zinc-550 italic text-xs text-center py-12">Failed to retrieve book depth.</div>
+            )}
+          </div>
+
           {/* Right Column: Journal & Notes */}
+
           <div className="space-y-6 flex flex-col h-full">
             <div className="space-y-6">
               <div className={`p-6 border rounded-2xl ${

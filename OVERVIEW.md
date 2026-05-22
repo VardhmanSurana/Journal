@@ -125,7 +125,7 @@ graph TB
 
 ### Critical Subsystems
 
-The Delta Journal repository relies on 4 critical subsystems:
+The Delta Journal repository relies on 7 critical subsystems:
 
 #### 1. Delta API client (`app/backend/api/client.py`)
 - **Purpose**: Authenticated HTTPS interfacing with Delta Exchange endpoints.
@@ -145,6 +145,18 @@ $$\text{GST} = \text{Commission} \times \frac{18}{118}$$
 #### 4. Cryptographic Storage & Concurrency
 - **AES-128 Column Encryption**: Integrated inside `app/backend/api/encryption.py`, executing transparent symmetric encryption/decryption on sensitive journal notes, lesson files, strategic parameters, and emotional logs. Fallback parsing ensures plain-text compatibility.
 - **High Concurrency WAL Engine**: SQLite integration configured with an explicit 30-second busy timeout and Write-Ahead Logging active, eliminating concurrency exceptions.
+
+#### 5. Funding Cost & Reward Optimization Engine
+- **Asset breakdown matrix**: Tracks and displays transaction commission fees, net funding payouts, voucher earnings, and net cash flow performance mapped directly by trading asset (e.g., USDT, BTC, ETH).
+- **Leakage Alert Diagnostics**: Monitors adverse funding rate events and high commissions, flagging warning cards detailing the asset, severity level, specific cost leakage, and actionable remedies (e.g., avoiding multi-day leveraged hold intervals during funding clocks or opting for maker order limits).
+
+#### 6. Live Orderbook Depth & Execution Overlay
+- **Bids/Asks Market Ladder**: Displays real-time order depth with custom-rendered color liquidity fills (red for asks, green for bids) and dynamic spread calculation metrics.
+- **Execution Overlay**: Maps average entry and average exit parameters contextually onto the active market depth to help traders audit slippage and locate their position entry/exit points visually.
+
+#### 7. API Rate Limit Health Widget
+- **Live Rate Indicator**: Decodes rate limits, remaining quota allocations, and time resets from public exchange nodes to safeguard against rate exhaustions.
+- **Visual Progress Bar**: Integrated dynamically inside the connection panel, transitioning from green to red when rate pools are close to depletion.
 
 ### Primary Data Flow
 

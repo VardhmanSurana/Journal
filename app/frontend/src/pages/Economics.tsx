@@ -5,7 +5,7 @@ import {
 } from 'recharts'
 import { 
   Coins, TrendingUp, TrendingDown, Clock, 
-  ArrowUpRight, ArrowDownRight, Wallet, PieChart, Info
+  ArrowUpRight, ArrowDownRight, Wallet, PieChart, Info, AlertTriangle, ShieldCheck
 } from 'lucide-react'
 import { useCurrency } from '../hooks/useCurrency'
 import { useThemeClasses, useChartTheme } from '../utils/theme'
@@ -30,14 +30,19 @@ export const Economics = ({ theme }: { theme: 'light' | 'dark' }) => {
   const chartTheme = useChartTheme(theme)
   
   const [data, setData] = useState<EconomicsData | null>(null)
+  const [optimization, setOptimization] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | 'all'>('30d')
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/economics`)
-        setData(res.data)
+        const [econRes, optRes] = await Promise.all([
+          axios.get(`${API_BASE}/economics`),
+          axios.get(`${API_BASE}/economics/optimization`)
+        ])
+        setData(econRes.data)
+        setOptimization(optRes.data)
       } catch (err) {
         console.error('Error fetching economics data:', err)
       } finally {
@@ -166,7 +171,7 @@ export const Economics = ({ theme }: { theme: 'light' | 'dark' }) => {
                     borderRadius: '12px',
                     fontSize: '12px'
                   }}
-                  itemStyle={{ color: theme === 'dark' ? '#fff' : '#000' }}
+                  itemStyle={{ color: theme === 'dark' ? '#fff' : '#005' }}
                   labelStyle={{ color: theme === 'dark' ? '#a1a1aa' : '#71717a' }}
                   cursor={{ fill: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }}
                 />
@@ -209,7 +214,7 @@ export const Economics = ({ theme }: { theme: 'light' | 'dark' }) => {
                     borderRadius: '12px',
                     fontSize: '12px'
                   }}
-                  itemStyle={{ color: theme === 'dark' ? '#fff' : '#000' }}
+                  itemStyle={{ color: theme === 'dark' ? '#fff' : '#005' }}
                   labelStyle={{ color: theme === 'dark' ? '#a1a1aa' : '#71717a' }}
                   cursor={{ fill: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }}
                 />
@@ -224,6 +229,90 @@ export const Economics = ({ theme }: { theme: 'light' | 'dark' }) => {
           </div>
         </div>
       </div>
+
+      {/* Funding & Fee Optimization Section (Feature 3) */}
+      {optimization && (
+        <div className={`${bgClass} p-6 rounded-xl border space-y-6`}>
+          <div className="flex items-center gap-2 mb-2">
+            <Coins size={20} className="text-amber-400" />
+            <h3 className={`text-lg font-bold ${textClass}`}>Funding & Fee Optimization Diagnostics</h3>
+          </div>
+
+          {optimization.alerts && optimization.alerts.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {optimization.alerts.map((alert: any, idx: number) => (
+                <div key={idx} className={`p-4 rounded-xl border flex gap-3 items-start ${
+                  alert.type === 'leakage'
+                    ? theme === 'dark' ? 'bg-red-500/5 border-red-500/20' : 'bg-red-50 border-red-200'
+                    : alert.type === 'efficiency'
+                      ? theme === 'dark' ? 'bg-amber-500/5 border-amber-500/20' : 'bg-amber-50 border-amber-200'
+                      : theme === 'dark' ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-emerald-50 border-emerald-200'
+                }`}>
+                  {alert.type === 'leakage' ? (
+                    <AlertTriangle size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
+                  ) : alert.type === 'efficiency' ? (
+                    <Info size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <ShieldCheck size={18} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div>
+                    <h4 className={`text-xs font-black uppercase tracking-wider ${
+                      alert.type === 'leakage' ? 'text-red-400' : alert.type === 'efficiency' ? 'text-amber-500' : 'text-emerald-500'
+                    }`}>
+                      {alert.type.toUpperCase()}: {alert.asset}
+                    </h4>
+                    <p className={`text-xs leading-relaxed mt-1 ${theme === 'dark' ? 'text-zinc-350' : 'text-zinc-650'}`}>
+                      {alert.message}
+                    </p>
+                    <div className="text-[10px] mt-2 font-bold uppercase tracking-widest text-zinc-500">
+                      💡 Suggested Action: <span className={theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}>{alert.suggested_action}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className={`p-4 rounded-xl border text-center text-xs text-zinc-500 italic ${
+              theme === 'dark' ? 'bg-zinc-900/20 border-zinc-850' : 'bg-zinc-50 border-zinc-200'
+            }`}>
+              🎉 Capital Efficiency Perfect: No active funding leakage or excessive commissions detected. Your position management is highly optimized.
+            </div>
+          )}
+
+          {/* Asset-by-Asset breakdown Matrix */}
+          <div className="overflow-x-auto rounded-xl border border-zinc-800/40">
+            <table className="w-full text-left text-xs">
+              <thead className={`${theme === 'dark' ? 'bg-zinc-900 text-zinc-400' : 'bg-zinc-100 text-zinc-600'} font-bold uppercase text-[10px] tracking-wider border-b border-zinc-800/20`}>
+                <tr>
+                  <th className="p-3">Asset</th>
+                  <th className="p-3 text-right">Commissions Paid</th>
+                  <th className="p-3 text-right">Net Funding Performance</th>
+                  <th className="p-3 text-right">Rewards & Rebates</th>
+                  <th className="p-3 text-right">Net Cash Flow</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-850/10 font-mono">
+                {Object.entries(optimization.asset_stats).map(([asset, stats]: any) => {
+                  const netCash = stats.rewards + stats.funding - stats.fees;
+                  return (
+                    <tr key={asset} className={`${theme === 'dark' ? 'hover:bg-zinc-900/40' : 'hover:bg-zinc-50/50'} transition-colors`}>
+                      <td className="p-3 font-bold">{asset}</td>
+                      <td className="p-3 text-right text-red-400">-{format(stats.fees)}</td>
+                      <td className={`p-3 text-right ${stats.funding >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {stats.funding >= 0 ? '+' : ''}{format(stats.funding)}
+                      </td>
+                      <td className="p-3 text-right text-emerald-400">+{format(stats.rewards)}</td>
+                      <td className={`p-3 text-right font-black ${netCash >= 0 ? 'winner' : 'loser'}`}>
+                        {netCash >= 0 ? '+' : ''}{format(netCash)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Info Notice */}
       <div className={`p-4 rounded-xl border flex gap-3 items-start ${theme === 'dark' ? 'bg-zinc-900/50 border-zinc-800' : 'bg-zinc-100/80 border-zinc-200'}`}>

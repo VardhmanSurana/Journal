@@ -17,6 +17,8 @@ import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { Link } from 'react-router-dom'
 
+import { motion } from 'framer-motion'
+
 function cn(...inputs: any[]) {
   return twMerge(clsx(inputs))
 }
@@ -71,19 +73,27 @@ export const Sidebar = ({ activeTab, setActiveTab, onSync, isSyncing, collapsed,
             key={item.id}
             to={item.path}
             title={collapsed ? item.label : undefined}
+            onClick={() => setActiveTab(item.id)}
             className={cn(
-              "w-full flex items-center rounded-xl transition-all group",
+              "w-full flex items-center rounded-xl transition-all group relative overflow-hidden",
               activeTab === item.id 
-                ? "bg-[#F7F4F3] text-zinc-700 shadow-sm" 
-                : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200",
+                ? "text-zinc-950" 
+                : "text-zinc-400 hover:bg-zinc-900/40 hover:text-zinc-250",
               collapsed ? "justify-center p-3" : "justify-between px-4 py-3"
             )}
           >
-            <div className={cn("flex items-center gap-3", collapsed ? "justify-center" : "")}>
+            {activeTab === item.id && (
+              <motion.div
+                layoutId="active-sidebar-pill"
+                className="absolute inset-0 bg-[#F7F4F3] rounded-xl -z-10"
+                transition={{ type: "spring", stiffness: 350, damping: 30 }}
+              />
+            )}
+            <div className={cn("flex items-center gap-3 z-10", collapsed ? "justify-center" : "")}>
               <item.icon size={20} />
               {!collapsed && <span className="font-medium">{item.label}</span>}
             </div>
-            {!collapsed && activeTab === item.id && <ChevronRight size={16} />}
+            {!collapsed && activeTab === item.id && <ChevronRight size={16} className="z-10" />}
           </Link>
         ))}
       </nav>

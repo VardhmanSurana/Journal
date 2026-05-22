@@ -6,6 +6,7 @@ import { useThemeClasses, useChartTheme } from '../utils/theme'
 import { PerformanceCalendar } from '../components/Calendar'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { EmptyStateCard } from '../components/EmptyState'
+import { motion } from 'framer-motion'
 
 interface DashboardProps {
   summary: any
@@ -13,6 +14,29 @@ interface DashboardProps {
   positions: any[]
   news: any[]
   theme?: 'dark' | 'light'
+}
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08
+    }
+  }
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  show: { 
+    opacity: 1, 
+    y: 0, 
+    transition: { 
+      type: "spring", 
+      stiffness: 260, 
+      damping: 22 
+    } 
+  }
 }
 
 export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' }: DashboardProps) => {
@@ -83,8 +107,13 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
   return (
     <div className="space-y-6">
       {/* Quick Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card stat-card">
+      <motion.div 
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+      >
+        <motion.div variants={itemVariants} className="card stat-card">
           <div className={`stat-icon ${theme === 'dark' ? 'bg-zinc-800 text-zinc-100' : 'bg-zinc-100 text-zinc-700'}`}>
             <Target size={20} />
           </div>
@@ -92,9 +121,9 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
             <span className="stat-label">Win Rate</span>
             <span className={`stat-value ${textClass}`}>{summary.win_rate}%</span>
           </div>
-        </div>
+        </motion.div>
         
-        <div className="card stat-card">
+        <motion.div variants={itemVariants} className="card stat-card">
           <div className="stat-icon bg-emerald-500/10 text-emerald-500">
             <TrendingUp size={20} />
           </div>
@@ -104,9 +133,9 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
               {format(Math.abs(summary.total_net_pnl))}
             </span>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="card stat-card">
+        <motion.div variants={itemVariants} className="card stat-card">
           <div className="stat-icon bg-blue-500/10 text-blue-500">
             <Activity size={20} />
           </div>
@@ -116,9 +145,9 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
               {format(Math.abs(summary.total_profit_after_tax))}
             </span>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="card stat-card">
+        <motion.div variants={itemVariants} className="card stat-card">
           <div className={`stat-icon ${theme === 'dark' ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-500'}`}>
             <Activity size={20} />
           </div>
@@ -126,10 +155,15 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
             <span className="stat-label">Profit Factor</span>
             <span className={`stat-value ${textClass}`}>{summary.profit_factor}</span>
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35, duration: 0.5, type: "spring", stiffness: 150, damping: 20 }}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+      >
         {/* Recent Trades */}
         <div className="lg:col-span-2 card p-6">
           <div className="flex justify-between items-center mb-6">
@@ -180,9 +214,14 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
             selectedDate={selectedDate}
           />
         </div>
-      </div>
+      </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.45, duration: 0.5, type: "spring", stiffness: 150, damping: 20 }}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+      >
         {/* Equity Curve */}
         <div className="lg:col-span-2 card p-6">
           <h3 className={`text-lg font-bold ${textClass} mb-6 flex items-center gap-2`}>
@@ -256,7 +295,7 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
              </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Bottom Section: Open Positions */}
       <div className="grid grid-cols-1 gap-6">

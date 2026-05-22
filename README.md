@@ -1,6 +1,6 @@
 # Delta Journal
 
-Automated crypto trading journal for Delta Exchange users with full-stack web dashboard and Obsidian vault integration.
+Automated crypto trading journal for Delta Exchange users with a highly secure full-stack web dashboard.
 
 ## Features
 
@@ -13,24 +13,19 @@ Automated crypto trading journal for Delta Exchange users with full-stack web da
 - **Indian Tax Compliance** - GST extraction, slab-rate tax calculations, and turnover tracking for audit thresholds.
 - **Dynamic Currency** - Instantly toggle between USD and INR across all reports.
 
-### 📝 Obsidian Integration (CLI)
-- **Markdown Journaling** - Automatically generate detailed trade reports in your Obsidian vault.
-- **Interactive Dashboards** - DataviewJS + Chart.js powered views with live currency switching.
-- **AI Trading Coach** - Optional Gemini integration to analyze performance and provide actionable feedback.
-
-### 🛡️ Security & Journal-First Philosophy
+### 🛡️ Security & Concurrency Hardening
 - **Read-Only by Design** - The application is architecturally restricted to read-only API interactions, ensuring zero risk of accidental trade execution or position modification.
-- **HMAC-SHA256 Auth** - Secure interaction with Delta Exchange API.
-- **Credential Protection** - Secrets are redacted in logs and never exposed in traces.
+- **AES-128 Field-Level Encryption** - Sensitive psychological data (trade notes, strategies, emotions, mistakes, daily reviews) are automatically encrypted on disk using robust PBKDF2 key derivation and Fernet ciphers.
+- **High Concurrency Database** - Enabled SQLite Write-Ahead Logging (WAL) and 30-second connection busy timeouts across all synchronization and backend services to eliminate lock exceptions.
+- **Programmatic Auto-Migrations** - Dynamic boot-time schema aligner that programmatically detects and updates SQLite tables to match active Python models without risk of data loss.
+- **Credential Protection** - HMAC-SHA256 authenticated API queries, where secrets are strictly passed via headers and redacted in all stack traces and application logs.
 
 ## Project Status
 
 The project is currently optimized for **Institutional-Grade Journaling**.
-- **Security Hardening:** Completed (Pivot to Read-Only keys, removal of active trading risk).
-- **Functional UX:** Completed (Financial analytics, sync lifecycle tracking).
+- **Security Hardening:** Completed (Field-level encryption, multi-reader WAL database, redaction).
+- **Functional UX:** Completed (Financial analytics, sync lifecycle tracking, currency conversion).
 - **UI Redesign:** Completed (Spacious two-column trade details, standardized P&L styling).
-
-See [docs/implementation_plan.md](docs/implementation_plan.md) for the roadmap.
 
 ## Prerequisites
 
@@ -65,8 +60,9 @@ cp .env.example .env
 |-------|-------------|
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS 4, Lucide Icons |
 | Backend | Python 3.11+, FastAPI, SQLModel (SQLite), Pydantic v2 |
+| Security | cryptography (AES-128 Fernet, PBKDF2HMAC-SHA256) |
 | CLI / Sync | uv (Python), Bun (Frontend) |
-| Integration | Obsidian, DataviewJS, Chart.js, Google Gemini |
+| Integration | Google Gemini (AI Trading Coach) |
 
 ## License
 

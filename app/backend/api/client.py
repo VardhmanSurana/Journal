@@ -35,6 +35,42 @@ class DeltaAPIError(Exception):
         super().__init__(f"Delta API error {status_code} at {safe_url}: {message}")
 
 
+from datetime import datetime, timezone
+
+def parse_delta_timestamp(raw_val: Any) -> datetime:
+    """Standardized robust parser for Delta Exchange's dual timestamp formats.
+    Handles Unix microsecond/millisecond integers, floats, and standard ISO-8601 strings.
+    """
+    if not raw_val:
+        return datetime.now(timezone.utc)
+    
+    # 1. Handle integer or float timestamp
+    try:
+        val_str = str(raw_val).strip()
+        if val_str.isdigit() or (val_str.startswith("-") and val_str[1:].isdigit()):
+            ts = float(val_str)
+        else:
+            ts = float(raw_val)
+            
+        if ts > 1e14:  # Microseconds (e.g. 1678045806327000)
+            return datetime.fromtimestamp(ts / 1_000_000, tz=timezone.utc)
+        elif ts > 1e11:  # Milliseconds (e.g. 1678045806327)
+            return datetime.fromtimestamp(ts / 1_000, tz=timezone.utc)
+        else:  # Seconds
+            return datetime.fromtimestamp(ts, tz=timezone.utc)
+    except (ValueError, TypeError):
+        pass
+
+    # 2. Handle ISO-8601 format string
+    try:
+        iso_str = str(raw_val).strip()
+        if iso_str.endswith("Z"):
+            iso_str = iso_str[:-1] + "+00:00"
+        return datetime.fromisoformat(iso_str)
+    except Exception:
+        return datetime.now(timezone.utc)
+
+
 # ---------------------------------------------------------------------------
 # Auth helpers
 # ---------------------------------------------------------------------------

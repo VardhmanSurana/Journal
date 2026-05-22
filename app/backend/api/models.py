@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from sqlmodel import SQLModel, Field, Relationship
 from pydantic import BaseModel, Field as PydanticField
+from api.client import parse_delta_timestamp
 
 # --- API Parsing Models ---
 
@@ -26,11 +27,7 @@ class APIFill(BaseModel):
 
     @property
     def timestamp(self) -> datetime:
-        try:
-            ts = int(self.created_at)
-            return datetime.fromtimestamp(ts / 1_000_000, tz=timezone.utc)
-        except (ValueError, TypeError):
-            return datetime.fromisoformat(str(self.created_at).replace("Z", "+00:00"))
+        return parse_delta_timestamp(self.created_at)
 
 # --- Database Models ---
 

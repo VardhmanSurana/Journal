@@ -14,6 +14,7 @@ from api.models import (
 )
 from api.client import fetch_fills, fetch_wallet_balance, fetch_positions, fetch_tickers, fetch_news, fetch_rss_news
 from api.config import config
+from api.encryption import encrypt_text, decrypt_text
 
 router = APIRouter()
 
@@ -65,6 +66,11 @@ def get_trades(session: Session = Depends(get_session)):
         t_dict = t.model_dump()
         t_dict['events'] = [e.model_dump() for e in events]
         t_dict['screenshots'] = [s.model_dump() for s in screenshots]
+        # Decrypt sensitive columns for the UI
+        t_dict['notes'] = decrypt_text(t.notes)
+        t_dict['mistakes'] = decrypt_text(t.mistakes)
+        t_dict['emotion'] = decrypt_text(t.emotion)
+        t_dict['pre_plan'] = decrypt_text(t.pre_plan)
         result.append(t_dict)
     return result
 
@@ -355,7 +361,10 @@ def update_trade(trade_id: int, updates: TradeUpdateRequest, session: Session = 
         print(f"DEBUG: Updating trade {trade_id} with fields: {list(updates_dict.keys())}")
         
         for field_name, field_value in updates_dict.items():
-            setattr(trade, field_name, field_value)
+            if field_name in ["notes", "mistakes", "emotion", "pre_plan"]:
+                setattr(trade, field_name, encrypt_text(field_value))
+            else:
+                setattr(trade, field_name, field_value)
     
     # Calculate actual risk % if stop loss is set
     if trade.stop_loss and trade.avg_entry and trade.size:
@@ -488,8 +497,8 @@ def get_daily_reviews(session: Session = Depends(get_session)):
             "date_str": r.date_str,
             "mood": r.mood,
             "discipline_score": r.discipline_score,
-            "mistakes": r.mistakes,
-            "lessons": r.lessons
+            "mistakes": decrypt_text(r.mistakes),
+            "lessons": decrypt_text(r.lessons)
         }
         for r in reviews
     ]
@@ -511,8 +520,8 @@ def create_daily_review(review: DailyReviewRequest, session: Session = Depends(g
             print(f"DEBUG: Updating existing review ID: {existing.id}")
             existing.mood = payload.get("mood", existing.mood)
             existing.discipline_score = payload.get("discipline_score", existing.discipline_score)
-            existing.mistakes = payload.get("mistakes", existing.mistakes)
-            existing.lessons = payload.get("lessons", existing.lessons)
+            existing.mistakes = encrypt_text(payload.get("mistakes", decrypt_text(existing.mistakes)))
+            existing.lessons = encrypt_text(payload.get("lessons", decrypt_text(existing.lessons)))
             session.add(existing)
             session.commit()
             return {"status": "updated", "id": existing.id}
@@ -522,8 +531,8 @@ def create_daily_review(review: DailyReviewRequest, session: Session = Depends(g
                 date_str=review.date_str,
                 mood=review.mood,
                 discipline_score=review.discipline_score,
-                mistakes=review.mistakes or "",
-                lessons=review.lessons or ""
+                mistakes=encrypt_text(review.mistakes or ""),
+                lessons=encrypt_text(review.lessons or "")
             )
             session.add(new_review)
             session.commit()

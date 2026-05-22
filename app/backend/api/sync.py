@@ -3,7 +3,7 @@ from typing import Dict, Any, Literal
 from pydantic import BaseModel
 from sqlmodel import Session, select, text
 from api.models import Trade, Fill, TradeEvent, APIFill, Transaction
-from api.client import fetch_fills, fetch_transactions
+from api.client import fetch_fills, fetch_transactions, parse_delta_timestamp
 from api.config import config
 
 class SyncState(BaseModel):
@@ -189,12 +189,7 @@ def run_sync(session: Session):
                     continue
                 existing = session.exec(select(Transaction).where(Transaction.exchange_transaction_id == tx_id)).first()
                 if not existing:
-                    # Delta returns ISO strings
-                    ts_str = rt.get("created_at")
-                    if isinstance(ts_str, str):
-                        ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                    else:
-                        ts = datetime.now(timezone.utc)
+                    ts = parse_delta_timestamp(rt.get("created_at"))
                     
                     import json
                     tx = Transaction(

@@ -10,10 +10,12 @@ import {
   ChevronRight,
   ChevronLeft,
   Shield,
-  FileText
+  FileText,
+  Landmark
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { Link } from 'react-router-dom'
 
 function cn(...inputs: any[]) {
   return twMerge(clsx(inputs))
@@ -31,13 +33,12 @@ interface SidebarProps {
 export const Sidebar = ({ activeTab, setActiveTab, onSync, isSyncing, collapsed, setCollapsed }: SidebarProps) => {
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'trades', label: 'Trade History', icon: History },
-    { id: 'risk', label: 'Risk & Positions', icon: Shield },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'reviews', label: 'Daily Reviews', icon: BookOpen },
-    { id: 'tax', label: 'Tax Report', icon: FileText },
-    { id: 'safety', label: 'Safety Center', icon: Settings },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/' },
+    { id: 'trades', label: 'Trade History', icon: History, path: '/trades' },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
+    { id: 'economics', label: 'Economics', icon: Landmark, path: '/economics' },
+    { id: 'reviews', label: 'Daily Reviews', icon: BookOpen, path: '/reviews' },
+    { id: 'safety', label: 'Maintenance', icon: Settings, path: '/safety' },
   ]
 
   return (
@@ -66,9 +67,9 @@ export const Sidebar = ({ activeTab, setActiveTab, onSync, isSyncing, collapsed,
       {/* Navigation */}
       <nav className={cn("flex-1 p-4 space-y-2 mt-4", collapsed ? "p-2" : "")}>
         {menuItems.map((item) => (
-          <button
+          <Link
             key={item.id}
-            onClick={() => setActiveTab(item.id)}
+            to={item.path}
             title={collapsed ? item.label : undefined}
             className={cn(
               "w-full flex items-center rounded-xl transition-all group",
@@ -83,7 +84,7 @@ export const Sidebar = ({ activeTab, setActiveTab, onSync, isSyncing, collapsed,
               {!collapsed && <span className="font-medium">{item.label}</span>}
             </div>
             {!collapsed && activeTab === item.id && <ChevronRight size={16} />}
-          </button>
+          </Link>
         ))}
       </nav>
 

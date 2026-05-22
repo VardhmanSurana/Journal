@@ -2,13 +2,20 @@ from fastapi import FastAPI
 from fastapi import Request
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from api.routes import router
 import asyncio
+import os
 from api.database import init_db, engine
 from api.sync import run_sync
 from sqlmodel import Session
 
 app = FastAPI(title="Delta Journal API")
+
+# Ensure static and screenshots folders exist
+os.makedirs("static/screenshots", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 # Setup CORS for the React app
 app.add_middleware(

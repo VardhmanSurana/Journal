@@ -39,28 +39,26 @@ class DeltaAPIError(Exception):
 # Auth helpers
 # ---------------------------------------------------------------------------
 
-def _sign(method: str, path: str, query: str, body: str, timestamp: str, read_only: bool = False) -> str:
+def _sign(method: str, path: str, query: str, body: str, timestamp: str) -> str:
     """Generate HMAC-SHA256 signature as required by Delta Exchange."""
     message = method + timestamp + path
     if query:
         message += "?" + query
     message += body
     
-    secret = config.READ_ONLY_SECRET if read_only else config.API_SECRET
     return hmac.new(
-        secret.encode(),
+        config.READ_ONLY_SECRET.encode(),
         message.encode(),
         hashlib.sha256,
     ).hexdigest()
 
 
-def _headers(method: str, path: str, query: str = "", body: str = "", read_only: bool = False) -> dict[str, str]:
+def _headers(method: str, path: str, query: str = "", body: str = "") -> dict[str, str]:
     timestamp = str(int(time.time()))
-    signature = _sign(method, path, query, body, timestamp, read_only=read_only)
-    key = config.READ_ONLY_KEY if read_only else config.API_KEY
+    signature = _sign(method, path, query, body, timestamp)
     return {
         "Accept": "application/json",
-        "api-key": key,
+        "api-key": config.READ_ONLY_KEY,
         "timestamp": timestamp,
         "signature": signature,
     }
@@ -77,7 +75,7 @@ def _log_redacted(url: str, headers: dict[str, str]) -> None:
 # Core request — with retry/backoff (D5) and safe error wrapping (S1)
 # ---------------------------------------------------------------------------
 
-def _get(path: str, params: dict[str, Any] | None = None, public: bool = False, read_only: bool = True) -> dict[str, Any]:
+def _get(path: str, params: dict[str, Any] | None = None, public: bool = False) -> dict[str, Any]:
     """
     Make an authenticated (or public) GET request with exponential backoff.
 
@@ -90,7 +88,7 @@ def _get(path: str, params: dict[str, Any] | None = None, public: bool = False, 
     url = f"{config.base_url}{path}"
     hdrs = {"Accept": "application/json"}
     if not public:
-        hdrs.update(_headers("GET", f"/v2{path}", query, read_only=read_only))
+        hdrs.update(_headers("GET", f"/v2{path}", query))
 
     last_exc: Exception | None = None
     for attempt in range(_MAX_RETRIES + 1):
@@ -179,6 +177,19 @@ def fetch_fills(after: str | None = None) -> list[dict]:
     return list(_paginate("/fills", params))
 
 
+def fetch_transactions(after: str | None = None, transaction_types: str | None = None) -> list[dict]:
+    """
+    Fetch wallet transaction history (funding, fees, rewards, etc).
+    """
+    params: dict[str, Any] = {}
+    if after:
+        params["after"] = after
+    if transaction_types:
+        params["transaction_types"] = transaction_types
+
+    return list(_paginate("/wallet/transactions", params))
+
+
 def fetch_order_history(after: str | None = None) -> list[dict]:
     """
     Fetch closed/cancelled orders.
@@ -232,22 +243,6 @@ def fetch_tickers(underlying_asset_symbols: str = "") -> list[dict]:
         params["underlying_asset_symbols"] = underlying_asset_symbols
     data = _get("/tickers", params)
     return data.get("result", [])
-
-
-def update_deadman_switch(timeout: int) -> dict[str, Any]:
-    """
-    Update Deadman Switch timeout (in seconds).
-    If no heartbeat is received within this time, all open orders are cancelled.
-    """
-    path = "/orders/deadman_switch"
-    body = {"timeout": timeout}
-    hdrs = _headers("POST", f"/v2{path}", body=str(body), read_only=False)
-    
-    url = f"{config.base_url}{path}"
-    response = requests.post(url, json=body, headers=hdrs, timeout=10)
-    if not response.ok:
-        raise DeltaAPIError(response.status_code, url, response.text[:200])
-    return response.json()
 
 
 # ---------------------------------------------------------------------------

@@ -54,8 +54,7 @@ def make_trade(
         exit_role="taker",
         gross_pnl=1000.0 if winner else -1000.0,
         total_commission=10.0,
-        gst_in_commission=10.0 * 18 / 118,
-        net_fee_excl_gst=10.0 * 100 / 118,
+        net_fee_excl_gst=10.0,
         net_pnl=net_pnl,
         income_tax=297.0 if winner else 0.0,
         profit_after_tax=693.0 if winner else net_pnl,
@@ -79,7 +78,6 @@ def test_write_trade_note_creates_file(tmp_path):
     assert "60000" in content
     assert "net_pnl: 990.0" in content
     assert "profit_after_tax: 693.0" in content
-    assert "gst_in_commission" in content
     assert "income_tax" in content
 
 

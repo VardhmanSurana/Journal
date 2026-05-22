@@ -43,5 +43,21 @@ def run_sync():
         print(f"  ✗ Error during background sync: {e}")
         sys.exit(1)
 
+import time
+
+def run_loop(interval: int = 10):
+    print(f"[{datetime.now().isoformat()}] Starting continuous background sync (Interval: {interval}s)...")
+    while True:
+        try:
+            run_sync()
+        except KeyboardInterrupt:
+            print("Stopping background sync...")
+            break
+        except Exception as e:
+            print(f"Loop error: {e}")
+        
+        time.sleep(interval)
+
 if __name__ == "__main__":
-    run_sync()
+    # Run every 5 seconds for absolute minimum delay
+    run_loop(5)

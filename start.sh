@@ -3,6 +3,9 @@
 # Delta Journal Full-Stack Runner
 # This script starts both the FastAPI backend and the React frontend.
 
+# Ensure ~/.local/bin and ~/.bun/bin are in PATH
+export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"
+
 # Get the absolute path of the project root
 ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
@@ -25,10 +28,20 @@ cleanup() {
     echo "Stopping Delta Journal services..."
     # Kill the background backend process
     if [ ! -z "$BACKEND_PID" ]; then
-        kill $BACKEND_PID 2>/dev/null
+        if kill -0 $BACKEND_PID 2>/dev/null; then
+            kill $BACKEND_PID 2>/dev/null
+        fi
+    fi
+    if [ ! -z "$SYNC_PID" ]; then
+        if kill -0 $SYNC_PID 2>/dev/null; then
+            kill $SYNC_PID 2>/dev/null
+        fi
     fi
     # Also kill any other background jobs started by this shell
-    kill $(jobs -p) 2>/dev/null
+    JOBS=$(jobs -p)
+    if [ ! -z "$JOBS" ]; then
+        kill $JOBS 2>/dev/null
+    fi
     exit
 }
 
@@ -54,12 +67,16 @@ while ! curl -s http://localhost:8000/ > /dev/null; do
         echo "❌ Backend failed to start. Check app/backend.log for errors."
         echo "Recent logs:"
         tail -n 10 "$ROOT_DIR/app/backend.log"
-        kill $BACKEND_PID
-        exit 1
+        cleanup
     fi
 done
 
 echo "✅ Backend is live at http://localhost:8000"
+
+# 1.5 Start Background Sync Loop
+echo "🔄 Starting Auto-Sync Loop..."
+uv run python background_sync.py > "$ROOT_DIR/app/sync.log" 2>&1 &
+SYNC_PID=$!
 
 # 2. Start Frontend
 echo "💻 Starting Frontend (Vite)..."

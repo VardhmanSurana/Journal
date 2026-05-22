@@ -124,8 +124,6 @@ def main() -> None:
     table.add_row("Win Rate", f"{summary['win_rate']}%")
     table.add_row("Gross P&L", str(summary["total_gross_pnl"]))
     table.add_row("Total Funding", f"[yellow]{summary['total_funding']}[/]")
-    table.add_row("Base Fee (ex-GST)", str(summary["total_base_fee"]))
-    table.add_row("GST on Fees 18%", str(summary["total_gst"]))
     table.add_row("Total Commission", str(summary["total_commission"]))
     table.add_row("Net P&L", str(summary["total_net_pnl"]))
     table.add_row("Income Tax (slab)", str(summary["total_income_tax"]))

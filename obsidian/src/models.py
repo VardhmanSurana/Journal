@@ -128,9 +128,9 @@ class Trade:
 
         self.total_commission = self.entry_commission + self.exit_commission
 
-        # Break out GST portion (18% embedded in commission)
-        self.gst_in_commission = self.total_commission * (18 / 118)
-        self.net_fee_excl_gst = self.total_commission - self.gst_in_commission
+        # No need to extract GST separately as per user request
+        self.gst_in_commission = 0.0
+        self.net_fee_excl_gst = self.total_commission
 
         # Net P&L includes funding fees (positive = received, negative = paid)
         self.net_pnl = self.gross_pnl - self.total_commission + self.funding_fees

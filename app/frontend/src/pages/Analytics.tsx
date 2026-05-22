@@ -5,7 +5,8 @@ import {
 } from 'recharts'
 import { 
   Activity, Clock, Calendar,
-  BarChart3, PieChart, ArrowUpDown
+  BarChart3, PieChart, ArrowUpDown,
+  TrendingUp, TrendingDown
 } from 'lucide-react'
 import { useCurrency } from '../hooks/useCurrency'
 import { useThemeClasses, useChartTheme } from '../utils/theme'
@@ -111,19 +112,19 @@ export const Analytics = ({ trades, summary, theme }: AnalyticsProps) => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className={`${bgClass} p-6 rounded-xl border`}>
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-zinc-800 rounded-lg">
-              <ArrowUpDown className="text-zinc-100" size={20} />
+            <div className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-100'}`}>
+              <ArrowUpDown className={theme === 'dark' ? 'text-zinc-100' : 'text-zinc-700'} size={20} />
             </div>
-            <span className="text-sm font-medium text-zinc-400">Long vs Short</span>
+            <span className={`text-sm font-medium ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Long vs Short</span>
           </div>
           <div className="space-y-3">
             <div className="flex justify-between items-center">
-              <span className="text-sm text-zinc-400">Long Win Rate</span>
-              <span className="font-bold text-zinc-100">{analyticsData.longWinRate.toFixed(1)}%</span>
+              <span className={`text-sm ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Long Win Rate</span>
+              <span className={`font-bold ${theme === 'dark' ? 'text-zinc-100' : 'text-zinc-800'}`}>{analyticsData.longWinRate.toFixed(1)}%</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-zinc-400">Short Win Rate</span>
-              <span className="font-bold text-orange-400">{analyticsData.shortWinRate.toFixed(1)}%</span>
+              <span className={`text-sm ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Short Win Rate</span>
+              <span className={`font-bold ${theme === 'dark' ? 'text-orange-400' : 'text-orange-600'}`}>{analyticsData.shortWinRate.toFixed(1)}%</span>
             </div>
           </div>
         </div>
@@ -133,7 +134,7 @@ export const Analytics = ({ trades, summary, theme }: AnalyticsProps) => {
             <div className="p-2 bg-purple-500/10 rounded-lg">
               <Clock className="text-purple-400" size={20} />
             </div>
-            <span className="text-sm font-medium text-zinc-400">Avg Hold Time</span>
+            <span className={`text-sm font-medium ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Avg Hold Time</span>
           </div>
           <div className={`text-2xl font-bold ${textClass}`}>
             {Math.floor(analyticsData.avgHoldingTime)}m
@@ -146,128 +147,68 @@ export const Analytics = ({ trades, summary, theme }: AnalyticsProps) => {
         <div className={`${bgClass} p-6 rounded-xl border`}>
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-emerald-500/10 rounded-lg">
-              <Activity className="text-emerald-400" size={20} />
+              <TrendingUp className="text-emerald-400" size={20} />
             </div>
-            <span className="text-sm font-medium text-zinc-400">Best Hour</span>
+            <span className={`text-sm font-medium ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Avg Win</span>
           </div>
-          <div className={`text-2xl font-bold ${textClass}`}>
-            {analyticsData.peakHour.hour}:00
-          </div>
-          <div className="text-xs text-zinc-500 mt-1">
-            {analyticsData.peakHour.count} trades, {format(analyticsData.peakHour.pnl)}
+          <div className={`text-2xl font-bold winner`}>
+            {format(Math.abs(summary.avg_win))}
           </div>
         </div>
 
         <div className={`${bgClass} p-6 rounded-xl border`}>
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-yellow-500/10 rounded-lg">
-              <Calendar className="text-yellow-400" size={20} />
+            <div className="p-2 bg-red-500/10 rounded-lg">
+              <TrendingDown className="text-red-400" size={20} />
             </div>
-            <span className="text-sm font-medium text-zinc-400">Best Day</span>
+            <span className={`text-sm font-medium ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Avg Loss</span>
           </div>
-          <div className={`text-2xl font-bold ${textClass}`}>
-            {analyticsData.bestDay.day}
-          </div>
-          <div className="text-xs text-zinc-500 mt-1">
-            {analyticsData.bestDay.count} trades, {format(analyticsData.bestDay.pnl)}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className={`${bgClass} p-6 rounded-xl border`}>
-          <h3 className={`text-lg font-semibold mb-6 flex items-center gap-2 ${textClass}`}>
-            <BarChart3 size={20} className="text-zinc-100" /> P&L by Hour of Day
-          </h3>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={analyticsData.byHour}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridColor} vertical={false} />
-                <XAxis dataKey="hour" stroke={chartTheme.axisColor} fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke={chartTheme.axisColor} fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: chartTheme.tooltipBg, 
-                    border: `1px solid ${chartTheme.tooltipBorder}`,
-                    borderRadius: '8px'
-                  }}
-                />
-                <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
-                  {analyticsData.byHour.map((entry: any, index: number) => (
-                    <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? '#10b981' : '#ef4444'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className={`text-2xl font-bold loser`}>
+            {format(Math.abs(summary.avg_loss))}
           </div>
         </div>
 
-        <div className={`${bgClass} p-6 rounded-xl border`}>
-          <h3 className={`text-lg font-semibold mb-6 flex items-center gap-2 ${textClass}`}>
-            <PieChart size={20} className="text-zinc-100" /> P&L by Day of Week
-          </h3>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={analyticsData.byDay}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridColor} vertical={false} />
-                <XAxis dataKey="day" stroke={chartTheme.axisColor} fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke={chartTheme.axisColor} fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: chartTheme.tooltipBg, 
-                    border: `1px solid ${chartTheme.tooltipBorder}`,
-                    borderRadius: '8px'
-                  }}
-                />
-                <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
-                  {analyticsData.byDay.map((entry: any, index: number) => (
-                    <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? '#10b981' : '#ef4444'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
       </div>
+
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className={`${bgClass} p-6 rounded-xl border`}>
           <h3 className={`text-lg font-semibold mb-4 ${textClass}`}>Trade Duration Distribution</h3>
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <span className="text-sm text-zinc-400">Scalp (&lt;1h)</span>
+              <span className={`text-sm ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Scalp (&lt;1h)</span>
               <div className="flex items-center gap-3">
-                <div className="w-32 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                <div className={`w-32 h-2 rounded-full overflow-hidden ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'}`}>
                   <div 
-                    className="h-full bg-zinc-100 rounded-full" 
+                    className={`h-full rounded-full ${theme === 'dark' ? 'bg-zinc-100' : 'bg-zinc-700'}`} 
                     style={{ width: `${(analyticsData.byDuration.scalp / trades.length) * 100}%` }}
                   />
                 </div>
-                <span className="text-sm font-medium text-zinc-300">{analyticsData.byDuration.scalp}</span>
+                <span className={`text-sm font-medium ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>{analyticsData.byDuration.scalp}</span>
               </div>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-zinc-400">Intraday (1-24h)</span>
+              <span className={`text-sm ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Intraday (1-24h)</span>
               <div className="flex items-center gap-3">
-                <div className="w-32 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                <div className={`w-32 h-2 rounded-full overflow-hidden ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'}`}>
                   <div 
                     className="h-full bg-purple-500 rounded-full" 
                     style={{ width: `${(analyticsData.byDuration.intraday / trades.length) * 100}%` }}
                   />
                 </div>
-                <span className="text-sm font-medium text-zinc-300">{analyticsData.byDuration.intraday}</span>
+                <span className={`text-sm font-medium ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>{analyticsData.byDuration.intraday}</span>
               </div>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-zinc-400">Swing (&gt;24h)</span>
+              <span className={`text-sm ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Swing (&gt;24h)</span>
               <div className="flex items-center gap-3">
-                <div className="w-32 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                <div className={`w-32 h-2 rounded-full overflow-hidden ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'}`}>
                   <div 
                     className="h-full bg-orange-500 rounded-full" 
                     style={{ width: `${(analyticsData.byDuration.swing / trades.length) * 100}%` }}
                   />
                 </div>
-                <span className="text-sm font-medium text-zinc-300">{analyticsData.byDuration.swing}</span>
+                <span className={`text-sm font-medium ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>{analyticsData.byDuration.swing}</span>
               </div>
             </div>
           </div>
@@ -278,31 +219,31 @@ export const Analytics = ({ trades, summary, theme }: AnalyticsProps) => {
           <div className="grid grid-cols-3 gap-4">
             <div className={`${cardBgClass} p-4 rounded-lg`}>
               <div className="text-xs text-zinc-500 mb-2">Long Winners</div>
-              <div className="text-xl font-bold text-zinc-100">{analyticsData.byDirection.long.wins}</div>
+              <div className={`text-xl font-bold ${theme === 'dark' ? 'text-zinc-100' : 'text-zinc-900'}`}>{analyticsData.byDirection.long.wins}</div>
             </div>
             <div className={`${cardBgClass} p-4 rounded-lg`}>
               <div className="text-xs text-zinc-500 mb-2">Long P&L</div>
-              <div className={`text-xl font-bold ${analyticsData.byDirection.long.pnl >= 0 ? 'text-emerald-400' : 'text-red-500'}`}>
-                {format(analyticsData.byDirection.long.pnl)}
+              <div className={`text-xl font-bold ${analyticsData.byDirection.long.pnl >= 0 ? 'winner' : 'loser'}`}>
+                {format(Math.abs(analyticsData.byDirection.long.pnl))}
               </div>
             </div>
             <div className={`${cardBgClass} p-4 rounded-lg`}>
               <div className="text-xs text-zinc-500 mb-2">Long Win Rate</div>
-              <div className="text-xl font-bold text-zinc-100">{analyticsData.longWinRate.toFixed(1)}%</div>
+              <div className={`text-xl font-bold ${theme === 'dark' ? 'text-zinc-100' : 'text-zinc-900'}`}>{analyticsData.longWinRate.toFixed(1)}%</div>
             </div>
             <div className={`${cardBgClass} p-4 rounded-lg`}>
               <div className="text-xs text-zinc-500 mb-2">Short Winners</div>
-              <div className="text-xl font-bold text-orange-400">{analyticsData.byDirection.short.wins}</div>
+              <div className={`text-xl font-bold ${theme === 'dark' ? 'text-orange-400' : 'text-orange-600'}`}>{analyticsData.byDirection.short.wins}</div>
             </div>
             <div className={`${cardBgClass} p-4 rounded-lg`}>
               <div className="text-xs text-zinc-500 mb-2">Short P&L</div>
-              <div className={`text-xl font-bold ${analyticsData.byDirection.short.pnl >= 0 ? 'text-emerald-400' : 'text-red-500'}`}>
-                {format(analyticsData.byDirection.short.pnl)}
+              <div className={`text-xl font-bold ${analyticsData.byDirection.short.pnl >= 0 ? 'winner' : 'loser'}`}>
+                {format(Math.abs(analyticsData.byDirection.short.pnl))}
               </div>
             </div>
             <div className={`${cardBgClass} p-4 rounded-lg`}>
               <div className="text-xs text-zinc-500 mb-2">Short Win Rate</div>
-              <div className="text-xl font-bold text-orange-400">{analyticsData.shortWinRate.toFixed(1)}%</div>
+              <div className={`text-xl font-bold ${theme === 'dark' ? 'text-orange-400' : 'text-orange-600'}`}>{analyticsData.shortWinRate.toFixed(1)}%</div>
             </div>
           </div>
         </div>

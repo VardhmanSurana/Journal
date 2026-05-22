@@ -8,18 +8,6 @@ interface ConnectionHealth {
   is_stale: boolean;
   stale_seconds?: number;
   region: string;
-  safety: {
-    api_key_configured: boolean;
-    read_only_key_configured: boolean;
-    webhook_configured: boolean;
-    deadman_switch_enabled: boolean;
-    safe_mode_active: boolean;
-  };
-  permissions: {
-    read: boolean;
-    trade: boolean;
-    margin_change: boolean;
-  };
   last_error?: string;
 }
 
@@ -33,7 +21,6 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ health, theme 
 
   const isSyncPending = health.is_stale && (health.stale_seconds === null || health.stale_seconds === undefined);
   const isHealthy = !health.is_stale && health.api_status === 'ok' && health.sync_status !== 'failed';
-  const hasTrading = health.permissions.trade;
 
   return (
     <div className={`mx-8 mt-4 p-4 rounded-2xl border transition-all duration-300 ${
@@ -60,12 +47,20 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ health, theme 
             </span>
           </div>
 
-          <div className="h-4 w-[1px] bg-zinc-700/50" />
+          <div className={`h-4 w-[1px] ${theme === 'dark' ? 'bg-zinc-700/50' : 'bg-zinc-300'}`} />
 
           <div className="flex items-center gap-2 text-xs">
             <Activity size={14} className={health.sync_status === 'running' ? 'animate-pulse text-blue-400' : 'text-zinc-500'} />
             <span className="font-medium">
-              Sync: <span className={health.sync_status === 'failed' ? 'text-red-400' : isSyncPending ? 'text-zinc-400' : 'text-zinc-100'}>
+              Sync: <span className={
+                health.sync_status === 'failed' 
+                  ? 'text-red-500' 
+                  : isSyncPending 
+                    ? 'text-zinc-400' 
+                    : theme === 'dark' 
+                      ? 'text-zinc-100' 
+                      : 'text-zinc-800'
+              }>
                 {health.sync_status.toUpperCase()}
               </span>
             </span>
@@ -79,28 +74,27 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ health, theme 
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/50 border border-zinc-700/50">
-            {health.safety.safe_mode_active ? (
-              <ShieldCheck size={14} className="text-blue-400" />
-            ) : (
-              <ShieldAlert size={14} className="text-amber-400" />
-            )}
-            <span className="text-[10px] font-bold uppercase tracking-tighter">
-              {health.safety.safe_mode_active ? 'Safe Mode ON' : 'Trading ON'}
-            </span>
-          </div>
-
-          <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-tighter ${
-            hasTrading ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-500'
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-colors ${
+            theme === 'dark'
+              ? 'bg-zinc-800/50 border-zinc-700/50 text-zinc-400'
+              : 'bg-zinc-100 border-zinc-200 text-zinc-600'
           }`}>
             <Shield size={14} />
-            {hasTrading ? 'Full Permissions' : 'Read-Only'}
+            <span className="text-[10px] font-black uppercase tracking-widest">Journal Mode</span>
           </div>
         </div>
       </div>
 
       {(health.is_stale || health.last_error) && (
-        <div className={`mt-3 pt-3 border-t border-zinc-800/50 flex items-start gap-2 text-xs ${isSyncPending ? 'text-zinc-500' : 'text-red-300'}`}>
+        <div className={`mt-3 pt-3 border-t flex items-start gap-2 text-xs transition-colors ${
+          theme === 'dark' ? 'border-zinc-800/50' : 'border-zinc-200'
+        } ${
+          isSyncPending 
+            ? 'text-zinc-500' 
+            : theme === 'dark' 
+              ? 'text-red-300' 
+              : 'text-red-700'
+        }`}>
           {isSyncPending ? <Activity size={14} className="mt-0.5 flex-shrink-0" /> : <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />}
           <div>
             {health.is_stale && (

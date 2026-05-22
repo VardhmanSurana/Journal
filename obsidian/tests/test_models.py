@@ -87,7 +87,6 @@ def test_long_trade_profit():
     assert t.total_commission == 10.0
     assert t.net_pnl == -9.0           # 1.0 - 10.0 (fee > gross profit)
     assert t.income_tax == 0.0         # loss, no tax
-    assert t.gst_in_commission == pytest.approx(10.0 * 18 / 118)
     assert t.is_winner is False
 
 

@@ -66,6 +66,20 @@ class TradeEvent(SQLModel, table=True):
     
     trade: "Trade" = Relationship(back_populates="events")
 
+class Transaction(SQLModel, table=True):
+    """4. WALLET TRANSACTIONS TABLE - Funding, Fees, Deposits, etc."""
+    __tablename__ = "transactions"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    exchange_transaction_id: str = Field(unique=True, index=True)
+    asset_id: int
+    asset_symbol: str
+    amount: float
+    type: str  # funding_payment, trading_fee, deposit, withdrawal, etc.
+    timestamp: datetime
+    method: str = "" # credit, debit
+    meta_data: str = "{}" # JSON string for additional context
+
 class Trade(SQLModel, table=True):
     """2. TRADE CYCLES TABLE - Reconstructed Trades (The actual journal)."""
     __tablename__ = "trades"
@@ -151,6 +165,18 @@ class PriceAlert(SQLModel, table=True):
     triggered_at: Optional[datetime] = None
 
 # --- Frontend Data Transfer Objects ---
+
+class EconomicsDaily(BaseModel):
+    date: str
+    fees: float
+    funding: float
+    rewards: float
+
+class EconomicsSummary(BaseModel):
+    total_fees: float
+    total_funding: float
+    total_rewards: float
+    daily_history: List[EconomicsDaily]
 
 class DashboardSummary(BaseModel):
     total_trades: int

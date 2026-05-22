@@ -1,6 +1,9 @@
-import { useState } from 'react'
 import { BookOpen, Plus, Save, X, Calendar, Smile, Frown, Meh, Edit2, Trash2 } from 'lucide-react'
+import axios from 'axios'
+import { useState, useEffect } from 'react'
+import { API_BASE } from '../config/api'
 import { useThemeClasses } from '../utils/theme'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 
 interface DailyReview {
   id: number
@@ -13,6 +16,8 @@ interface DailyReview {
 
 interface DailyReviewsProps {
   theme: 'dark' | 'light'
+  trades: any[]
+  onReview: (trade: any) => void
 }
 
 const MOODS = [
@@ -23,16 +28,27 @@ const MOODS = [
   { value: 'terrible', label: 'Terrible', icon: Frown, color: 'text-rose-400' },
 ]
 
-export const DailyReviews = ({ theme }: DailyReviewsProps) => {
-  const [reviews, setReviews] = useState<DailyReview[]>([
-    { id: 1, date_str: '2024-01-15', mood: 'good', discipline_score: 8, mistakes: 'Overtrading, revenge trading', lessons: 'Sticked to my plan for first 3 trades' },
-    { id: 2, date_str: '2024-01-14', mood: 'neutral', discipline_score: 6, mistakes: 'Ignored stop loss', lessons: 'Need better risk management' },
-    { id: 3, date_str: '2024-01-13', mood: 'great', discipline_score: 9, mistakes: '', lessons: 'Perfect execution on breakout strategy' },
-  ])
-
+export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => {
+  const [reviews, setReviews] = useState<DailyReview[]>([])
+  const [loading, setLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [editingReview, setEditingReview] = useState<Partial<DailyReview> | null>(null)
   const { bgClass, textClass, cardBgClass, subTextClass } = useThemeClasses(theme)
+
+  const fetchReviews = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/reviews`)
+      setReviews(res.data)
+    } catch (err) {
+      console.error('Error fetching reviews:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchReviews()
+  }, [])
 
   const handleNewReview = () => {
     setEditingReview({
@@ -45,32 +61,45 @@ export const DailyReviews = ({ theme }: DailyReviewsProps) => {
     setIsEditing(true)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editingReview) return
 
-    if (editingReview.id) {
-      setReviews(reviews.map(r => r.id === editingReview.id ? { ...r, ...editingReview } as DailyReview : r))
-    } else {
-      const newReview: DailyReview = {
-        id: Date.now(),
-        date_str: editingReview.date_str || '',
-        mood: editingReview.mood || 'neutral',
-        discipline_score: editingReview.discipline_score || 5,
-        mistakes: editingReview.mistakes || '',
-        lessons: editingReview.lessons || ''
-      }
-      setReviews([newReview, ...reviews])
+    try {
+      const res = await axios.post(`${API_BASE}/reviews`, {
+        date_str: editingReview.date_str,
+        mood: editingReview.mood,
+        discipline_score: editingReview.discipline_score,
+        mistakes: editingReview.mistakes,
+        lessons: editingReview.lessons
+      })
+      
+      console.log('Save response:', res.data)
+      await fetchReviews()
+      setIsEditing(false)
+      setEditingReview(null)
+      alert('Journal entry saved successfully!')
+    } catch (err: any) {
+      console.error('Error saving review:', err)
+      alert(`Failed to save journal: ${err.response?.data?.detail || err.message}`)
     }
-    setIsEditing(false)
-    setEditingReview(null)
   }
 
-  const handleDelete = (id: number) => {
-    setReviews(reviews.filter(r => r.id !== id))
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this entry?')) return
+    try {
+      await axios.delete(`${API_BASE}/reviews/${id}`)
+      await fetchReviews()
+    } catch (err) {
+      console.error('Error deleting review:', err)
+    }
   }
 
   const getMoodData = (moodValue: string) => {
     return MOODS.find(m => m.value === moodValue) || MOODS[2]
+  }
+
+  if (loading) {
+    return <LoadingSpinner message="Loading journal entries..." />
   }
 
   return (
@@ -80,13 +109,54 @@ export const DailyReviews = ({ theme }: DailyReviewsProps) => {
           <h2 className={`text-xl font-semibold ${textClass}`}>Daily Trading Journal</h2>
           <p className={`text-sm ${subTextClass}`}>Track your mental state and daily performance</p>
         </div>
-        <button
-          onClick={handleNewReview}
-          className="flex items-center gap-2 px-4 py-2 bg-zinc-100 hover:bg-white text-zinc-950 rounded-lg transition-colors"
-        >
-          <Plus size={18} />
-          <span>New Entry</span>
-        </button>
+      </div>
+
+      {/* Trades to Review Section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className={`text-sm font-black uppercase tracking-widest ${subTextClass}`}>
+            Trades to Review
+          </h3>
+          <span className="text-[10px] text-zinc-500">{trades.length} trades found</span>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {trades.filter(t => !t.notes).slice(0, 6).map(trade => (
+            <button
+              key={trade.id}
+              onClick={() => onReview(trade)}
+              className={`${bgClass} border rounded-xl p-4 text-left transition-all group ${
+                theme === 'dark' 
+                  ? 'border-zinc-800 hover:border-zinc-600' 
+                  : 'border-zinc-200 hover:border-zinc-300 shadow-sm hover:shadow-md'
+              }`}
+            >
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <div className={`text-sm font-bold ${textClass}`}>{trade.symbol}</div>
+                  <div className="text-[10px] text-zinc-500 uppercase font-black tracking-tighter">
+                    {trade.direction} · {new Date(trade.exit_time).toLocaleDateString()}
+                  </div>
+                </div>
+                <div className={`text-xs font-bold ${trade.net_profit >= 0 ? 'winner' : 'loser'}`}>
+                  ${trade.net_profit.toFixed(2)}
+                </div>
+              </div>
+              <div className="flex items-center justify-between mt-4">
+                <div className="text-[10px] text-zinc-500 italic">
+                  {trade.notes ? 'Already journaled' : 'Pending review...'}
+                </div>
+                <div className={`p-1.5 rounded-lg transition-colors ${
+                  theme === 'dark' 
+                    ? 'bg-zinc-800 text-zinc-400 group-hover:bg-zinc-100 group-hover:text-zinc-950' 
+                    : 'bg-zinc-100 text-zinc-600 group-hover:bg-zinc-200 group-hover:text-zinc-900'
+                }`}>
+                  <Edit2 size={14} />
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
 
       {isEditing && editingReview && (
@@ -95,7 +165,7 @@ export const DailyReviews = ({ theme }: DailyReviewsProps) => {
             <h3 className={`text-lg font-semibold ${textClass}`}>
               {editingReview.id ? 'Edit Entry' : 'New Entry'}
             </h3>
-            <button onClick={() => { setIsEditing(false); setEditingReview(null) }} className="p-2 hover:bg-zinc-800 rounded-lg">
+            <button onClick={() => { setIsEditing(false); setEditingReview(null) }} className={`p-2 rounded-lg ${theme === 'dark' ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`}>
               <X size={20} className="text-zinc-400" />
             </button>
           </div>
@@ -109,7 +179,7 @@ export const DailyReviews = ({ theme }: DailyReviewsProps) => {
                 onChange={(e) => setEditingReview({ ...editingReview, date_str: e.target.value })}
                 className={`w-full p-3 rounded-lg border ${
                   theme === 'dark' 
-                    ? 'bg-zinc-800 border-zinc-700 text-white' 
+                    ? 'bg-zinc-850 border-zinc-700 text-white' 
                     : 'bg-white border-zinc-200 text-zinc-900'
                 }`}
               />
@@ -126,10 +196,12 @@ export const DailyReviews = ({ theme }: DailyReviewsProps) => {
                       onClick={() => setEditingReview({ ...editingReview, mood: mood.value })}
                       className={`flex-1 p-3 rounded-lg border transition-all ${
                         editingReview.mood === mood.value
-                          ? 'border-zinc-400 bg-zinc-800'
+                          ? theme === 'dark'
+                            ? 'border-zinc-400 bg-zinc-800'
+                            : 'border-zinc-600 bg-zinc-100 font-bold'
                           : theme === 'dark' 
-                            ? 'border-zinc-700 bg-zinc-800' 
-                            : 'border-zinc-200 bg-white'
+                            ? 'border-zinc-700 bg-zinc-850 hover:bg-zinc-800' 
+                            : 'border-zinc-200 bg-white hover:bg-zinc-50'
                       }`}
                     >
                       <Icon className={`mx-auto mb-1 ${mood.color}`} size={20} />
@@ -150,7 +222,7 @@ export const DailyReviews = ({ theme }: DailyReviewsProps) => {
                 max="10"
                 value={editingReview.discipline_score || 5}
                 onChange={(e) => setEditingReview({ ...editingReview, discipline_score: parseInt(e.target.value) })}
-                className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
+                className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-200'}`}
               />
               <div className="flex justify-between text-xs text-zinc-500 mt-1">
                 <span>Poor</span>
@@ -168,7 +240,7 @@ export const DailyReviews = ({ theme }: DailyReviewsProps) => {
                   rows={4}
                   className={`w-full p-3 rounded-lg border resize-none ${
                     theme === 'dark' 
-                      ? 'bg-zinc-800 border-zinc-700 text-white placeholder-zinc-500' 
+                      ? 'bg-zinc-850 border-zinc-700 text-white placeholder-zinc-500' 
                       : 'bg-white border-zinc-200 text-zinc-900 placeholder-zinc-400'
                   }`}
                 />
@@ -182,7 +254,7 @@ export const DailyReviews = ({ theme }: DailyReviewsProps) => {
                   rows={4}
                   className={`w-full p-3 rounded-lg border resize-none ${
                     theme === 'dark' 
-                      ? 'bg-zinc-800 border-zinc-700 text-white placeholder-zinc-500' 
+                      ? 'bg-zinc-850 border-zinc-700 text-white placeholder-zinc-500' 
                       : 'bg-white border-zinc-200 text-zinc-900 placeholder-zinc-400'
                   }`}
                 />
@@ -193,13 +265,17 @@ export const DailyReviews = ({ theme }: DailyReviewsProps) => {
           <div className="flex justify-end gap-3 mt-6">
             <button
               onClick={() => { setIsEditing(false); setEditingReview(null) }}
-              className="px-4 py-2 text-zinc-400 hover:text-white transition-colors"
+              className="px-4 py-2 text-zinc-400 hover:text-zinc-500 transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
-              className="flex items-center gap-2 px-6 py-2 bg-zinc-100 hover:bg-white text-zinc-950 rounded-lg transition-colors"
+              className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-colors ${
+                theme === 'dark' 
+                  ? 'bg-zinc-100 hover:bg-white text-zinc-950' 
+                  : 'bg-zinc-900 hover:bg-zinc-850 text-white shadow-sm'
+              }`}
             >
               <Save size={18} />
               <span>Save Entry</span>
@@ -244,21 +320,24 @@ export const DailyReviews = ({ theme }: DailyReviewsProps) => {
                     <div className="text-right mr-4">
                       <div className="text-xs text-zinc-500">Discipline Score</div>
                       <div className={`text-xl font-bold ${
-                        review.discipline_score >= 8 ? 'text-emerald-400' :
-                        review.discipline_score >= 5 ? 'text-blue-400' : 'text-rose-400'
+                        review.discipline_score >= 8 
+                          ? theme === 'dark' ? 'text-emerald-400' : 'text-emerald-700'
+                          : review.discipline_score >= 5 
+                            ? theme === 'dark' ? 'text-blue-400' : 'text-blue-700' 
+                            : theme === 'dark' ? 'text-rose-400' : 'text-rose-700'
                       }`}>
                         {review.discipline_score}/10
                       </div>
                     </div>
                     <button 
                       onClick={() => { setEditingReview(review); setIsEditing(true) }}
-                      className={`p-2 rounded-lg ${cardBgClass} hover:bg-zinc-700`}
+                      className={`p-2 rounded-lg ${cardBgClass} transition-colors ${theme === 'dark' ? 'hover:bg-zinc-700' : 'hover:bg-zinc-200'}`}
                     >
                       <Edit2 size={16} className="text-zinc-400" />
                     </button>
                     <button 
                       onClick={() => handleDelete(review.id)}
-                      className={`p-2 rounded-lg ${cardBgClass} hover:bg-rose-500/20`}
+                      className={`p-2 rounded-lg ${cardBgClass} transition-colors ${theme === 'dark' ? 'hover:bg-rose-500/20' : 'hover:bg-rose-100'}`}
                     >
                       <Trash2 size={16} className="text-rose-400" />
                     </button>

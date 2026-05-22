@@ -11,7 +11,10 @@ ENV/
 
 # Database
 *.db
+*.db-wal
+*.db-shm
 journal.db
+sqlite_*.db
 
 # Logs
 *.log
@@ -33,3 +36,4 @@ yarn-error.log*
 
 # Local env
 .env
+app/backend/static

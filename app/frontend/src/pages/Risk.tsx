@@ -153,7 +153,7 @@ export const RiskDashboard = ({ theme }: RiskDashboardProps) => {
             <span className="text-sm font-medium text-zinc-400">Max Drawdown</span>
           </div>
           <div className={`text-2xl font-bold text-rose-400`}>
-            {format(riskData?.max_drawdown || 0)}
+            {format(Math.abs(riskData?.max_drawdown || 0))}
           </div>
           <div className="text-xs text-zinc-500 mt-1">
             Annual return: {riskData?.annual_return_pct?.toFixed(1) || 0}%
@@ -244,8 +244,8 @@ export const RiskDashboard = ({ theme }: RiskDashboardProps) => {
                     <td className="py-3 text-zinc-300">{pos.size.toFixed(4)}</td>
                     <td className="py-3 text-zinc-400 font-mono">{pos.entry_price.toFixed(2)}</td>
                     <td className="py-3 text-zinc-400 font-mono">{pos.mark_price?.toFixed(2) || '-'}</td>
-                    <td className={`py-3 font-mono ${pos.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {pos.unrealized_pnl >= 0 ? '+' : ''}{format(pos.unrealized_pnl)}
+                    <td className={`py-3 font-mono ${pos.unrealized_pnl >= 0 ? 'winner' : 'loser'}`}>
+                      {format(Math.abs(pos.unrealized_pnl))}
                     </td>
                     <td className="py-3 text-zinc-400">{format(pos.margin_used)}</td>
                     <td className="py-3 text-zinc-400">{pos.leverage}x</td>

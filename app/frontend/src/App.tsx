@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
-import { History, TrendingUp, TrendingDown, Sun, Moon, Bell, AlertTriangle, Activity } from 'lucide-react'
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import { History, TrendingUp, TrendingDown, Sun, Moon, Bell, AlertTriangle, Activity, Shield, FileText, Landmark } from 'lucide-react'
 import { Dashboard } from './pages/Dashboard'
 import { Analytics } from './pages/Analytics'
+import { Economics } from './pages/Economics'
 import { DailyReviews } from './pages/DailyReviews'
-import { RiskDashboard } from './pages/Risk'
-import { TaxReport } from './pages/TaxReport'
 import { SafetyCenter } from './pages/Safety'
 import { CurrencyProvider, useCurrency } from './hooks/useCurrency'
 import { CurrencyToggle } from './components/CurrencyToggle'
@@ -18,12 +18,23 @@ import { API_BASE } from './config/api'
 import { ConnectionPanel } from './components/ConnectionPanel'
 import { normalizeError } from './utils/errorNormalization'
 
+interface TradeEvent {
+  id: number
+  event_type: 'ENTRY' | 'SCALE_IN' | 'PARTIAL_EXIT' | 'FULL_EXIT'
+  timestamp: string
+  price: number
+  size: number
+  notional: number
+}
+
 interface Trade {
   id: number
   symbol: string
   direction: string
   avg_entry: number
   avg_exit: number
+  entry_notional: number
+  exit_notional: number
   net_profit: number
   gross_profit: number
   fees: number
@@ -34,8 +45,19 @@ interface Trade {
   size: number
   is_winner: boolean
   result: string
-  strategy: string
-  notes: string
+  strategy: string | null
+  emotion: string | null
+  session: string | null
+  notes: string | null
+  pre_plan: string | null
+  risk_pct: number | null
+  stop_loss: number | null
+  take_profit: number | null
+  mistakes: string | null
+  discipline_score: number | null
+  confidence_score: number | null
+  events: TradeEvent[]
+  screenshots?: { id: number; image_path: string; chart_type: string }[]
 }
 
 interface ConnectionHealth {
@@ -45,37 +67,32 @@ interface ConnectionHealth {
   is_stale: boolean
   stale_seconds?: number
   region: string
-  safety: {
-    api_key_configured: boolean
-    read_only_key_configured: boolean
-    webhook_configured: boolean
-    deadman_switch_enabled: boolean
-    safe_mode_active: boolean
-  }
-  permissions: {
-    read: boolean
-    trade: boolean
-    margin_change: boolean
-  }
   last_error?: string
 }
 
 function AppContent() {
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { theme, toggleTheme } = useTheme()
+  const { format } = useCurrency()
+  
   const [trades, setTrades] = useState<Trade[]>([])
+  const [filteredTrades, setFilteredTrades] = useState<Trade[]>([])
   const [summary, setSummary] = useState<any>(null)
   const [positions, setPositions] = useState<any[]>([])
   const [news, setNews] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [filteredTrades, setFilteredTrades] = useState<Trade[]>([])
+  const [health, setHealth] = useState<ConnectionHealth | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('dashboard')
+  const [collapsed, setCollapsed] = useState(false)
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null)
   const [reviewingTrade, setReviewingTrade] = useState<Trade | null>(null)
-  const [alerts, setAlerts] = useState<any[]>([])
-  const [showAlerts, setShowAlerts] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [health, setHealth] = useState<ConnectionHealth | null>(null)
-  const { format } = useCurrency()
-  const { theme, toggleTheme } = useTheme()
+
+  // Sync state from URL
+  useEffect(() => {
+    const path = location.pathname.substring(1) || 'dashboard'
+    setActiveTab(path)
+  }, [location])
 
   const fetchData = async () => {
     try {
@@ -94,6 +111,8 @@ function AppContent() {
       setHealth(healthRes.data)
     } catch (err) {
       console.error('Error fetching data:', err)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -105,20 +124,26 @@ function AppContent() {
     } catch (err) {
       const normalized = normalizeError(err)
       console.error('Error syncing:', normalized)
-      // We could show a toast here with normalized.message + normalized.action
     } finally {
       setLoading(false)
     }
   }
 
+  const handleSaveTradeReview = async (updates: any) => {
+    if (!reviewingTrade) return
+    try {
+      await axios.put(`${API_BASE}/trades/${reviewingTrade.id}`, updates)
+      await fetchData()
+    } catch (err) {
+      console.error('Error saving trade review:', err)
+    }
+  }
+
   useEffect(() => {
     fetchData()
-    
-    // Auto-refresh live data every 10 seconds
     const interval = setInterval(() => {
       fetchData()
-    }, 10000)
-    
+    }, 10000) // Increased interval to 10s for efficiency
     return () => clearInterval(interval)
   }, [])
 
@@ -127,32 +152,33 @@ function AppContent() {
   const groupedTrades = useMemo(() => {
     const groups: Record<string, Trade[]> = {}
     displayedTrades.forEach(t => {
-      const date = new Date(t.exit_time).toLocaleDateString(undefined, { 
-        year: 'numeric', month: 'short', day: 'numeric' 
+      const date = new Date(t.exit_time).toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
       })
       if (!groups[date]) groups[date] = []
       groups[date].push(t)
     })
-    return Object.entries(groups).sort((a, b) => {
-      return new Date(b[1][0].exit_time).getTime() - new Date(a[1][0].exit_time).getTime()
-    })
+    return groups
   }, [displayedTrades])
 
   return (
-    <div className={`flex min-h-screen text-zinc-200 ${
-      theme === 'dark' ? 'bg-zinc-950' : 'bg-zinc-50'
-    }`}>
+    <div className={`flex min-h-screen ${theme === 'dark' ? 'bg-zinc-950 text-white' : 'bg-zinc-50 text-zinc-900'}`}>
       <Sidebar 
         activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
+        setActiveTab={(tab) => {
+          setActiveTab(tab)
+          navigate(tab === 'dashboard' ? '/' : `/${tab}`)
+        }}
         onSync={handleSync}
         isSyncing={loading}
-        collapsed={sidebarCollapsed}
-        setCollapsed={setSidebarCollapsed}
+        collapsed={collapsed}
+        setCollapsed={setCollapsed}
       />
 
-      <main className="flex-1 h-screen overflow-y-auto">
-        <header className={`sticky top-0 z-20 px-8 py-4 flex justify-between items-center ${
+      <main className="flex-1 flex flex-col overflow-hidden">
+        <header className={`h-20 flex items-center justify-between px-8 sticky top-0 z-30 ${
           theme === 'dark' 
             ? 'bg-zinc-950/80 backdrop-blur-md border-zinc-900' 
             : 'bg-white/80 backdrop-blur-md border-zinc-200'
@@ -162,8 +188,9 @@ function AppContent() {
               {activeTab === 'dashboard' ? 'Overview' : 
                activeTab === 'trades' ? 'History' :
                activeTab === 'analytics' ? 'Analysis' :
+               activeTab === 'economics' ? 'Economics' :
                activeTab === 'reviews' ? 'Reflection' :
-               activeTab === 'safety' ? 'Protection' : 'Page'}
+               activeTab === 'safety' ? 'Maintenance' : 'Page'}
             </h2>
             <h1 className={`text-2xl font-bold ${
               theme === 'dark' ? 'text-white' : 'text-zinc-900'
@@ -171,27 +198,31 @@ function AppContent() {
               {activeTab === 'dashboard' ? 'Trading Dashboard' : 
                activeTab === 'trades' ? 'Journal Log' :
                activeTab === 'analytics' ? 'Analytics Center' :
+               activeTab === 'economics' ? 'Fee & Funding Analysis' :
                activeTab === 'reviews' ? 'Daily Reviews' :
-               activeTab === 'safety' ? 'Safety Center' : 'Page'}
+               activeTab === 'safety' ? 'System Maintenance' : 'Page'}
             </h1>
           </div>
           
           <div className="flex items-center gap-6">
             {health && (
-              <div className={`px-3 py-2 rounded-lg border text-xs ${
-                health.sync_status === 'failed' || (health.is_stale && health.stale_seconds !== null)
-                  ? 'border-red-500/40 bg-red-500/10 text-red-300'
-                  : health.is_stale && health.stale_seconds === null
-                    ? 'border-zinc-700 bg-zinc-900/40 text-zinc-400'
-                    : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-              }`}>
-                <div className="font-semibold">
-                  {health.is_stale && health.stale_seconds !== null ? 'Stale Data' : 
-                   health.is_stale && health.stale_seconds === null ? 'Sync Pending' : 'Live Data'}
-                </div>
-                <div>
-                  Sync: {health.sync_status}
-                  {health.last_success_at ? ` · Last success ${new Date(health.last_success_at).toLocaleTimeString()}` : ''}
+              <div className="flex items-center gap-3">
+                <div className={`px-3 py-2 rounded-lg border text-xs ${
+                  health.sync_status === 'failed' || (health.is_stale && health.stale_seconds !== null)
+                    ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                    : health.is_stale && health.stale_seconds === null
+                      ? 'border-zinc-700 bg-zinc-900/40 text-zinc-400'
+                      : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                }`}>
+                  <div className="font-semibold flex items-center gap-2">
+                    <div className={`w-1.5 h-1.5 rounded-full ${health.sync_status === 'running' ? 'bg-amber-400 animate-pulse' : 'bg-current'}`} />
+                    {health.is_stale && health.stale_seconds !== null ? 'Stale Data' : 
+                     health.is_stale && health.stale_seconds === null ? 'Sync Pending' : 'Live Data'}
+                  </div>
+                  <div>
+                    Sync: {health.sync_status}
+                    {health.last_success_at ? ` · Last success ${new Date(health.last_success_at).toLocaleTimeString()}` : ''}
+                  </div>
                 </div>
               </div>
             )}
@@ -213,143 +244,125 @@ function AppContent() {
             </div>
           </div>
         </header>
-        {health?.is_stale && (
-          <div className={`${health.stale_seconds === null ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-amber-500/10 border-b border-amber-500/20 text-amber-500'} px-4 py-1.5 flex items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-wider animate-in slide-in-from-top duration-300`}>
-            {health.stale_seconds === null ? <Activity size={12} /> : <AlertTriangle size={12} />}
-            <span>
-              {health.stale_seconds === null 
-                ? "First sync pending. Please click 'Sync Delta'." 
-                : `Stale Data Warning: Last sync was ${Math.floor(health.stale_seconds / 60)}m ago.`}
-              <span className="ml-2 opacity-60 font-normal">Positions and P&L may not be live.</span>
-            </span>
-          </div>
-        )}
 
         <ConnectionPanel health={health} theme={theme} />
 
-        <div className="p-8 max-w-7xl mx-auto">
-          {activeTab === 'dashboard' && (
-            <Dashboard 
-              summary={summary} 
-              allTrades={trades} 
-              positions={positions}
-              news={news}
-              theme={theme} 
-            />
-          )}
-
-          {activeTab === 'trades' && (
-            <div className="space-y-6">
-              <TradeFilters 
-                trades={trades} 
-                onFilteredTrades={setFilteredTrades} 
-              />
-              
-              <div className={`card p-6 overflow-hidden ${theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'}`}>
-                <h2 className={`text-xl font-semibold mb-6 flex items-center gap-2 ${
-                  theme === 'dark' ? 'text-white' : 'text-zinc-900'
-                }`}>
-                  <History size={24} className="text-zinc-400" /> Complete Trade History
-                  <span className="text-sm font-normal text-zinc-500 ml-2">
-                    ({displayedTrades.length} trades)
-                  </span>
-                </h2>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className={`border-b ${theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'}`}>
-                        <th className="pb-4 pl-4 font-medium text-zinc-500">Symbol</th>
-                        <th className="pb-4 font-medium text-zinc-500">Type</th>
-                        <th className="pb-4 font-medium text-zinc-500">Avg Entry</th>
-                        <th className="pb-4 font-medium text-zinc-500">Avg Exit</th>
-                        <th className="pb-4 pr-4 font-medium text-zinc-500 text-right">Net P&L</th>
-                      </tr>
-                    </thead>
-                    <tbody className={theme === 'dark' ? 'divide-zinc-800' : 'divide-zinc-100'}>
-                      {groupedTrades.map(([date, dateTrades]) => (
-                        <React.Fragment key={date}>
-                          <tr className="bg-zinc-800/20">
-                            <td colSpan={5} className="py-2 px-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest border-y border-zinc-800/50">
-                              {date}
-                            </td>
-                          </tr>
-                          {dateTrades.map((trade) => (
-                            <tr 
-                              key={trade.id} 
-                              onClick={() => setSelectedTrade(trade)}
-                              className={`cursor-pointer transition-colors border-b ${
-                                theme === 'dark' ? 'hover:bg-zinc-800/40 border-zinc-800/50' : 'hover:bg-zinc-100 border-zinc-100'
-                              }`}
-                            >
-                              <td className={`py-4 pl-4 font-bold ${theme === 'dark' ? 'text-zinc-100' : 'text-zinc-900'}`}>
-                                {trade.symbol}
-                              </td>
-                              <td className="py-4">
-                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${
-                                  trade.direction === 'long' 
-                                    ? 'bg-zinc-800 text-zinc-300' 
-                                    : 'bg-orange-500/10 text-orange-400 border border-orange-500/20'
-                                }`}>
-                                  {trade.direction}
-                                </span>
-                              </td>
-                              <td className="py-4 font-mono text-sm text-zinc-400">
-                                {format(trade.avg_entry)}
-                              </td>
-                              <td className="py-4 font-mono text-sm text-zinc-400">
-                                {format(trade.avg_exit)}
-                              </td>
-                              <td className={`py-4 pr-4 text-right font-bold ${
-                                trade.is_winner ? 'text-emerald-400' : 'text-red-400'
-                              }`}>
-                                <div className="flex items-center justify-end gap-1">
-                                  {trade.is_winner ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                                  {format(trade.net_profit)}
-                                </div>
+        <div className="flex-1 overflow-y-auto p-8 pt-4">
+          <Routes>
+            <Route path="/" element={<Dashboard summary={summary} allTrades={trades} positions={positions} news={news} theme={theme} />} />
+            <Route path="/trades" element={
+              <div className="space-y-6">
+                <TradeFilters 
+                  onFilteredTrades={(filtered) => setFilteredTrades(filtered as Trade[])} 
+                  trades={trades} 
+                  theme={theme}
+                />
+                
+                <div className={`card overflow-hidden ${theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'}`}>
+                  <div className={`p-6 border-b flex items-center justify-between ${theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'}`}>
+                    <h3 className="text-lg font-bold flex items-center gap-2">
+                      <History size={20} className={theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'} /> Complete Trade History
+                      <span className={`text-xs font-normal ml-2 ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>({displayedTrades.length} trades)</span>
+                    </h3>
+                  </div>
+                  
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className={`text-[10px] font-black uppercase tracking-widest text-zinc-500 border-b ${theme === 'dark' ? 'border-zinc-800/50' : 'border-zinc-200'}`}>
+                          <th className="py-4 pl-6">Symbol</th>
+                          <th className="py-4">Type</th>
+                          <th className="py-4">Avg Entry</th>
+                          <th className="py-4">Avg Exit</th>
+                          <th className="py-4 pr-6 text-right">Net P&L</th>
+                        </tr>
+                      </thead>
+                      <tbody className={`divide-y ${theme === 'dark' ? 'divide-zinc-800/30' : 'divide-zinc-200'}`}>
+                        {Object.entries(groupedTrades).map(([date, dateTrades]) => (
+                          <React.Fragment key={date}>
+                            <tr className={theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-100'}>
+                              <td colSpan={5} className={`py-2 px-6 text-[10px] font-black uppercase tracking-tighter ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-600'}`}>
+                                {date}
                               </td>
                             </tr>
-                          ))}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                  
-                  {displayedTrades.length === 0 && (
-                    <div className="text-center py-12 text-zinc-500">
-                      No trades found matching your filters.
-                    </div>
-                  )}
+                            {dateTrades.map((trade) => (
+                              <tr 
+                                key={trade.id} 
+                                className={`group transition-colors cursor-pointer ${theme === 'dark' ? 'hover:bg-zinc-800/40' : 'hover:bg-zinc-50'}`}
+                                onClick={() => setSelectedTrade(trade)}
+                              >
+                                <td className="py-4 pl-6">
+                                  <div className={`text-sm font-bold group-hover:text-emerald-500 transition-colors ${theme === 'dark' ? 'text-white' : 'text-zinc-900'}`}>{trade.symbol}</div>
+                                </td>
+                                <td className="py-4">
+                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${
+                                    trade.direction === 'long' 
+                                      ? theme === 'dark' 
+                                        ? 'bg-zinc-800 text-zinc-300' 
+                                        : 'bg-zinc-200 text-zinc-700' 
+                                      : theme === 'dark'
+                                        ? 'bg-orange-500/10 text-orange-400'
+                                        : 'bg-orange-100 text-orange-700'
+                                  }`}>
+                                    {trade.direction}
+                                  </span>
+                                </td>
+                                <td className={`py-4 text-sm font-mono ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                                  {format(trade.avg_entry)}
+                                </td>
+                                <td className={`py-4 text-sm font-mono ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                                  {format(trade.avg_exit)}
+                                </td>
+                                <td className={`py-4 pr-4 text-right font-bold ${
+                                  trade.net_profit >= 0 ? 'winner' : 'loser'
+                                }`}>
+                                  <div className="flex items-center justify-end gap-1">
+                                    {trade.net_profit >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                    {format(Math.abs(trade.net_profit))}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                    
+                    {displayedTrades.length === 0 && (
+                      <div className="text-center py-12 text-zinc-500">
+                        No trades found matching your filters.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-
-          {activeTab === 'analytics' && (
-            <Analytics trades={trades} summary={summary} theme={theme} />
-          )}
-
-          {activeTab === 'reviews' && (
-            <DailyReviews theme={theme} />
-          )}
-
-          {activeTab === 'risk' && (
-            <RiskDashboard theme={theme} />
-          )}
-
-          {activeTab === 'tax' && (
-            <TaxReport theme={theme} />
-          )}
-
-          {activeTab === 'safety' && (
-            <SafetyCenter theme={theme} />
-          )}
+            } />
+            <Route path="/analytics" element={<Analytics trades={trades} summary={summary} theme={theme} />} />
+            <Route path="/economics" element={<Economics theme={theme} />} />
+            <Route path="/reviews" element={<DailyReviews theme={theme} trades={trades} onReview={(trade) => setReviewingTrade(trade)} />} />
+            <Route path="/safety" element={<SafetyCenter theme={theme} />} />
+          </Routes>
         </div>
       </main>
 
       {selectedTrade && (
         <TradeDetailModal 
           trade={selectedTrade} 
+          theme={theme}
           onClose={() => setSelectedTrade(null)} 
+          onReview={() => {
+            setReviewingTrade(selectedTrade)
+            setSelectedTrade(null)
+          }}
+        />
+      )}
+
+      {reviewingTrade && (
+        <TradeReviewModal
+          trade={reviewingTrade}
+          theme={theme}
+          onClose={() => setReviewingTrade(null)}
+          onSave={handleSaveTradeReview}
         />
       )}
     </div>
@@ -358,11 +371,13 @@ function AppContent() {
 
 function App() {
   return (
-    <ThemeProvider>
-      <CurrencyProvider>
-        <AppContent />
-      </CurrencyProvider>
-    </ThemeProvider>
+    <BrowserRouter>
+      <ThemeProvider>
+        <CurrencyProvider>
+          <AppContent />
+        </CurrencyProvider>
+      </ThemeProvider>
+    </BrowserRouter>
   )
 }
 

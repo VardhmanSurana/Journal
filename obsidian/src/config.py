@@ -30,8 +30,8 @@ class Config:
         return Path("./vault")
 
     def __init__(self) -> None:
-        self.API_KEY: str = os.getenv("DELTA_API_KEY", "")
-        self.API_SECRET: str = os.getenv("DELTA_API_SECRET", "")
+        self.API_KEY: str = os.getenv("DELTA_API_KEY", os.getenv("DELTA_API_KEY", ""))
+        self.API_SECRET: str = os.getenv("DELTA_API_SECRET", os.getenv("DELTA_API_SECRET", ""))
         
         # Support for multiple accounts via DELTA_ACCOUNTS=[{"name": "Main", "key": "...", "secret": "..."}, ...]
         import json

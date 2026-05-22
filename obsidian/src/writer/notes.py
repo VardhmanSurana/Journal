@@ -35,8 +35,6 @@ entry_commission: {round(trade.entry_commission, 6)}
 exit_commission: {round(trade.exit_commission, 6)}
 total_commission: {round(trade.total_commission, 6)}
 funding_fees: {round(trade.funding_fees, 6)}
-gst_in_commission: {round(trade.gst_in_commission, 6)}
-net_fee_excl_gst: {round(trade.net_fee_excl_gst, 6)}
 entry_notional: {round(trade.entry_notional, 6)}
 exit_notional: {round(trade.exit_notional, 6)}
 gross_pnl: {round(trade.gross_pnl, 4)}
@@ -94,8 +92,6 @@ tags: [trade, {trade.symbol.lower()}, {trade.direction}, {"winner" if trade.is_w
 |---|---|
 | **Gross P&L** | `{round(trade.gross_pnl, 4)}` {trade.settling_asset} |
 | **Funding Fees** | `{round(trade.funding_fees, 6)}` {trade.settling_asset} |
-| **Base Fee** | `{round(trade.net_fee_excl_gst, 6)}` {trade.settling_asset} |
-| **GST on Fee (18%)** | `{round(trade.gst_in_commission, 6)}` {trade.settling_asset} |
 | **Total Commission** | `{round(trade.total_commission, 6)}` {trade.settling_asset} |
 | **Net P&L** | **`{round(trade.net_pnl, 4)}`** {trade.settling_asset} {pnl_icon} |
 | **Income Tax (slab)** | `{round(trade.income_tax, 4)}` {trade.settling_asset} |
@@ -178,8 +174,6 @@ tags: [daily, trading]
 | Winners | 📈 {day_winners} |
 | Losers | 📉 {day_losers} |
 | Gross P&L | `{round(day_gross, 4)}` |
-| Base Fee (ex-GST) | `{round(day_commission * (100/118), 6)}` |
-| GST on Fees (18%) | `{round(day_commission * (18/118), 6)}` |
 | Total Commission | `{round(day_commission, 4)}` |
 | **Net P&L** | **`{round(day_net, 4)}`** {icon} |
 | Income Tax (slab) | `{round(day_tax, 4)}` |

@@ -1,10 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlmodel import Session, select, text
 from typing import List, Dict, Any, Literal
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
+import shutil
+import uuid
+import os
 from api.database import get_session
-from api.models import Trade, Fill, TradeEvent, DashboardSummary, APIFill, DailyReview, PriceAlert
+from api.models import (
+    Trade, Fill, TradeEvent, DashboardSummary, APIFill, 
+    DailyReview, PriceAlert, Transaction, EconomicsSummary, EconomicsDaily,
+    Screenshot
+)
 from api.client import fetch_fills, fetch_wallet_balance, fetch_positions, fetch_tickers, fetch_news, fetch_rss_news
 from api.config import config
 
@@ -48,10 +55,18 @@ def sync_trades(session: Session = Depends(get_session)):
 
 
 @router.get("/trades")
-
 def get_trades(session: Session = Depends(get_session)):
-    # Return closed trades for the frontend
-    return session.exec(select(Trade).where(Trade.is_open == False).order_by(Trade.exit_time.desc())).all()
+    # Return closed trades with their events and screenshots for the frontend
+    trades = session.exec(select(Trade).where(Trade.is_open == False).order_by(Trade.exit_time.desc())).all()
+    result = []
+    for t in trades:
+        events = session.exec(select(TradeEvent).where(TradeEvent.trade_id == t.id).order_by(TradeEvent.timestamp.asc())).all()
+        screenshots = session.exec(select(Screenshot).where(Screenshot.trade_id == t.id)).all()
+        t_dict = t.model_dump()
+        t_dict['events'] = [e.model_dump() for e in events]
+        t_dict['screenshots'] = [s.model_dump() for s in screenshots]
+        result.append(t_dict)
+    return result
 
 @router.get("/summary", response_model=DashboardSummary)
 def get_summary(session: Session = Depends(get_session)):
@@ -326,125 +341,21 @@ def get_risk_metrics(session: Session = Depends(get_session)):
     }
 
 
-@router.get("/tax/export")
-def export_tax_report(session: Session = Depends(get_session)):
-    """Export tax report as CSV for CA/audit."""
-    import csv
-    import io
-    
-    trades = session.exec(select(Trade).where(Trade.is_open == False).order_by(Trade.exit_time.asc())).all()
-    
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    # Header
-    writer.writerow([
-        "Symbol", "Entry Date", "Exit Date", "Direction", "Size",
-        "Entry Price", "Exit Price", "Gross P&L", "Fees", "GST",
-        "Net P&L", "Income Tax", "After Tax P&L", "Holding Days",
-        "Strategy", "Result"
-    ])
-    
-    total_turnover = 0
-    total_gross_pnl = 0
-    total_tax = 0
-    
-    for t in trades:
-        entry_date = t.entry_time.strftime("%Y-%m-%d") if t.entry_time else ""
-        exit_date = t.exit_time.strftime("%Y-%m-%d") if t.exit_time else ""
-        holding_days = round((t.exit_time - t.entry_time).total_seconds() / 86400, 1) if t.exit_time and t.entry_time else 0
-        
-        turnover = abs(t.gross_profit) if t.gross_profit else 0
-        total_turnover += turnover
-        total_gross_pnl += t.gross_profit or 0
-        total_tax += t.after_tax_profit - t.net_profit if t.after_tax_profit else 0
-        
-        writer.writerow([
-            t.symbol, entry_date, exit_date, t.direction, t.size,
-            round(t.avg_entry, 4), round(t.avg_exit, 4),
-            round(t.gross_profit or 0, 2), round(t.fees or 0, 2), round(t.gst or 0, 2),
-            round(t.net_profit or 0, 2), round((t.after_tax_profit - t.net_profit), 2) if t.after_tax_profit else 0,
-            round(t.after_tax_profit or 0, 2), holding_days,
-            t.strategy or "", t.result or ""
-        ])
-    
-    # Summary rows
-    writer.writerow([])
-    writer.writerow(["SUMMARY"])
-    writer.writerow(["Total Trades", len(trades)])
-    writer.writerow(["Total Turnover (for Audit)", round(total_turnover, 2)])
-    writer.writerow(["Gross P&L", round(total_gross_pnl, 2)])
-    writer.writerow(["Total Estimated Tax", round(total_tax, 2)])
-    
-    csv_content = output.getvalue()
-    return {"csv": csv_content, "filename": f"tax_report_{datetime.now().strftime('%Y%m%d')}.csv"}
-
-
-@router.get("/tax/summary")
-def get_tax_summary(session: Session = Depends(get_session)):
-    """Get annual tax summary for compliance."""
-    trades = session.exec(select(Trade).where(Trade.is_open == False).order_by(Trade.exit_time.asc())).all()
-    
-    # Group by year
-    by_year = {}
-    for t in trades:
-        if t.exit_time:
-            year = t.exit_time.year
-            if year not in by_year:
-                by_year[year] = {"trades": 0, "turnover": 0, "gross_pnl": 0, "fees": 0, "tax": 0, "after_tax": 0, "net_profit": 0}
-            
-            by_year[year]["trades"] += 1
-            by_year[year]["turnover"] += abs(t.gross_profit) if t.gross_profit else 0
-            by_year[year]["gross_pnl"] += t.gross_profit or 0
-            by_year[year]["fees"] += t.fees or 0
-            by_year[year]["net_profit"] += t.net_profit or 0
-            tax = (t.after_tax_profit - t.net_profit) if t.after_tax_profit else 0
-            by_year[year]["tax"] += tax
-            by_year[year]["after_tax"] += t.after_tax_profit or 0
-    
-    # Check for audit threshold (₹10Cr = 10,00,00,000 INR)
-    audit_threshold = 10000000  # 10Cr INR in USD (approx)
-    
-    result = []
-    accumulated_loss = 0
-    for year in sorted(by_year.keys()):
-        data = by_year[year]
-        
-        # Loss carry-forward logic:
-        # Current year taxable profit can be reduced by accumulated losses from previous 4 years
-        taxable_pnl = max(0, data["net_profit"] - accumulated_loss)
-        
-        # Update accumulated loss for next year
-        if data["net_profit"] < 0:
-            accumulated_loss += abs(data["net_profit"])
-        else:
-            accumulated_loss = max(0, accumulated_loss - data["net_profit"])
-
-        result.append({
-            "year": year,
-            "trades": data["trades"],
-            "turnover": round(data["turnover"], 2),
-            "gross_pnl": round(data["gross_pnl"], 2),
-            "total_fees": round(data["fees"], 2),
-            "estimated_tax": round(data["tax"], 2),
-            "profit_after_tax": round(data["after_tax"], 2),
-            "audit_required": data["turnover"] >= audit_threshold,
-            "losses_carried_forward": round(accumulated_loss, 2)
-        })
-    
-    return result
-
-
 @router.put("/trades/{trade_id}")
 def update_trade(trade_id: int, updates: TradeUpdateRequest, session: Session = Depends(get_session)):
     """Update trade with journal details (strategy, emotion, notes, etc)."""
-    trade = session.get(Trade, trade_id)
-    if not trade:
-        raise HTTPException(status_code=404, detail="Trade not found")
+    from api.sync import DB_LOCK
     
-    updates_dict = updates.model_dump(exclude_unset=True)
-    for field_name, field_value in updates_dict.items():
-        setattr(trade, field_name, field_value)
+    with DB_LOCK:
+        trade = session.get(Trade, trade_id)
+        if not trade:
+            raise HTTPException(status_code=404, detail="Trade not found")
+        
+        updates_dict = updates.model_dump(exclude_unset=True)
+        print(f"DEBUG: Updating trade {trade_id} with fields: {list(updates_dict.keys())}")
+        
+        for field_name, field_value in updates_dict.items():
+            setattr(trade, field_name, field_value)
     
     # Calculate actual risk % if stop loss is set
     if trade.stop_loss and trade.avg_entry and trade.size:
@@ -461,11 +372,77 @@ def update_trade(trade_id: int, updates: TradeUpdateRequest, session: Session = 
         except (TypeError, ValueError):
             trade.actual_risk_pct = 0.0
 
-    session.add(trade)
-    session.commit()
-    session.refresh(trade)
+        session.add(trade)
+        session.commit()
+        session.refresh(trade)
+        print(f"DEBUG: Trade {trade_id} updated successfully. Notes length: {len(trade.notes) if trade.notes else 0}")
     
     return {"status": "success", "trade_id": trade_id}
+
+
+@router.post("/trades/{trade_id}/screenshots")
+def upload_trade_screenshot(
+    trade_id: int, 
+    file: UploadFile = File(...), 
+    chart_type: str = "chart",
+    session: Session = Depends(get_session)
+):
+    trade = session.get(Trade, trade_id)
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+        
+    # Ensure static/screenshots exists
+    os.makedirs("static/screenshots", exist_ok=True)
+    
+    # Save file with unique ID
+    file_ext = os.path.splitext(file.filename)[1] or ".png"
+    unique_filename = f"{uuid.uuid4()}{file_ext}"
+    file_path = os.path.join("static/screenshots", unique_filename)
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    relative_url = f"/static/screenshots/{unique_filename}"
+    
+    screenshot = Screenshot(
+        trade_id=trade_id,
+        image_path=relative_url,
+        chart_type=chart_type
+    )
+    session.add(screenshot)
+    session.commit()
+    session.refresh(screenshot)
+    
+    return {"status": "success", "screenshot": screenshot.model_dump()}
+
+
+@router.delete("/trades/{trade_id}/screenshots/{screenshot_id}")
+def delete_trade_screenshot(
+    trade_id: int,
+    screenshot_id: int,
+    session: Session = Depends(get_session)
+):
+    trade = session.get(Trade, trade_id)
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+        
+    screenshot = session.get(Screenshot, screenshot_id)
+    if not screenshot or screenshot.trade_id != trade_id:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+        
+    # Delete from disk
+    path_on_disk = screenshot.image_path.lstrip("/")
+    if os.path.exists(path_on_disk):
+        try:
+            os.remove(path_on_disk)
+        except Exception as e:
+            print(f"Error deleting file {path_on_disk}: {e}")
+            
+    session.delete(screenshot)
+    session.commit()
+    
+    return {"status": "success"}
+
 
 
 @router.get("/health/connection")
@@ -483,14 +460,6 @@ def get_connection_health():
     STALE_THRESHOLD = 300 
     is_stale = (stale_seconds is None) or (stale_seconds > STALE_THRESHOLD)
     
-    # Permission detection (B)
-    # We can infer permissions by what keys are present
-    has_read_key = bool(config.READ_ONLY_KEY)
-    has_trading_key = bool(config.API_KEY)
-    
-    # In a real app, we'd call /wallet/balances to verify read
-    # and maybe a dry-run order to verify trade
-    
     return {
         "api_status": "ok",
         "sync_status": SYNC_STATE.status,
@@ -503,66 +472,13 @@ def get_connection_health():
         "stale_seconds": stale_seconds,
         "region": config.REGION.upper(),
         "safety": {
-            "api_key_configured": has_trading_key,
-            "read_only_key_configured": has_read_key,
+            "read_only_key_configured": bool(config.READ_ONLY_KEY),
             "webhook_configured": bool(config.WEBHOOK_URL),
-            "deadman_switch_enabled": config.DEADMAN_SWITCH_ENABLED,
-            "safe_mode_active": config.SAFE_MODE,
-        },
-        "permissions": {
-            "read": has_read_key,
-            "trade": has_trading_key and not config.SAFE_MODE,
-            "margin_change": has_trading_key and not config.SAFE_MODE,
         }
     }
 
 
-@router.post("/safety/safe-mode")
-def toggle_safe_mode(enabled: bool):
-    """Toggle Safe Mode (Platform-wide protection)."""
-    config.SAFE_MODE = enabled
-    return {"status": "success", "safe_mode": config.SAFE_MODE}
-
-
 @router.get("/data/reconcile")
-def reconcile_data(session: Session = Depends(get_session)):
-    """Reconcile local database with Delta Exchange history."""
-    try:
-        raw_fills = fetch_fills()
-        local_fills_count = session.exec(select(text("count(*)")).select_from(Fill)).one()
-        api_fills_count = len(raw_fills)
-        
-        diff = api_fills_count - local_fills_count
-        quality_score = max(0, 100 - (abs(diff) / max(1, api_fills_count) * 100))
-        
-        return {
-            "local_count": local_fills_count,
-            "api_count": api_fills_count,
-            "difference": diff,
-            "quality_score": round(quality_score, 2),
-            "status": "healthy" if diff == 0 else "discrepancy_detected"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/safety/deadman-switch")
-def set_deadman_switch(timeout_seconds: int = 60):
-    """Set Deadman Switch timeout (heartbeat protection)."""
-    if config.SAFE_MODE:
-        raise HTTPException(status_code=403, detail="Risk actions disabled in Safe Mode")
-    
-    from api.client import update_deadman_switch
-    try:
-        res = update_deadman_switch(timeout_seconds)
-        return {"status": "success", "data": res}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# === Daily Reviews CRUD ===
-
-@router.get("/reviews")
 def get_daily_reviews(session: Session = Depends(get_session)):
     """Get all daily reviews."""
     reviews = session.exec(select(DailyReview).order_by(DailyReview.date_str.desc())).all()
@@ -582,30 +498,37 @@ def get_daily_reviews(session: Session = Depends(get_session)):
 @router.post("/reviews")
 def create_daily_review(review: DailyReviewRequest, session: Session = Depends(get_session)):
     """Create or update daily review."""
-    existing = session.exec(
-        select(DailyReview).where(DailyReview.date_str == review.date_str)
-    ).first()
+    from api.sync import DB_LOCK
     
-    if existing:
-        payload = review.model_dump(exclude_unset=True)
-        existing.mood = payload.get("mood", existing.mood)
-        existing.discipline_score = payload.get("discipline_score", existing.discipline_score)
-        existing.mistakes = payload.get("mistakes", existing.mistakes)
-        existing.lessons = payload.get("lessons", existing.lessons)
-        session.add(existing)
-        session.commit()
-        return {"status": "updated", "id": existing.id}
-    else:
-        new_review = DailyReview(
-            date_str=review.date_str,
-            mood=review.mood,
-            discipline_score=review.discipline_score,
-            mistakes=review.mistakes or "",
-            lessons=review.lessons or ""
-        )
-        session.add(new_review)
-        session.commit()
-        return {"status": "created", "id": new_review.id}
+    with DB_LOCK:
+        print(f"DEBUG: Processing daily review for date: {review.date_str}")
+        existing = session.exec(
+            select(DailyReview).where(DailyReview.date_str == review.date_str)
+        ).first()
+        
+        if existing:
+            payload = review.model_dump(exclude_unset=True)
+            print(f"DEBUG: Updating existing review ID: {existing.id}")
+            existing.mood = payload.get("mood", existing.mood)
+            existing.discipline_score = payload.get("discipline_score", existing.discipline_score)
+            existing.mistakes = payload.get("mistakes", existing.mistakes)
+            existing.lessons = payload.get("lessons", existing.lessons)
+            session.add(existing)
+            session.commit()
+            return {"status": "updated", "id": existing.id}
+        else:
+            print(f"DEBUG: Creating new daily review")
+            new_review = DailyReview(
+                date_str=review.date_str,
+                mood=review.mood,
+                discipline_score=review.discipline_score,
+                mistakes=review.mistakes or "",
+                lessons=review.lessons or ""
+            )
+            session.add(new_review)
+            session.commit()
+            print(f"DEBUG: Daily review created with ID: {new_review.id}")
+            return {"status": "created", "id": new_review.id}
 
 
 @router.delete("/reviews/{review_id}")
@@ -729,6 +652,52 @@ def check_alerts(session: Session = Depends(get_session)):
 
 
 # === Sync with background ===
+
+@router.get("/economics", response_model=EconomicsSummary)
+def get_economics(session: Session = Depends(get_session)):
+    """Fetch aggregated fee and funding data."""
+    txs = session.exec(select(Transaction).order_by(Transaction.timestamp.asc())).all()
+    
+    daily_map = {} # date_str -> {fees, funding, rewards}
+    
+    total_fees = 0.0
+    total_funding = 0.0
+    total_rewards = 0.0
+    
+    for tx in txs:
+        date_str = tx.timestamp.strftime("%Y-%m-%d")
+        if date_str not in daily_map:
+            daily_map[date_str] = {"fees": 0.0, "funding": 0.0, "rewards": 0.0}
+        
+        # Use abs() for fees since they are usually debits (negative)
+        # Funding can be positive or negative
+        if tx.type in ["trading_fee", "commission"]:
+            amt = abs(tx.amount)
+            daily_map[date_str]["fees"] += amt
+            total_fees += amt
+        elif tx.type in ["funding_payment", "funding"]:
+            daily_map[date_str]["funding"] += tx.amount
+            total_funding += tx.amount
+        elif tx.type in ["bonus", "reward", "referral_rebate"]:
+            daily_map[date_str]["rewards"] += tx.amount
+            total_rewards += tx.amount
+            
+    daily_history = [
+        EconomicsDaily(
+            date=k,
+            fees=round(v["fees"], 4),
+            funding=round(v["funding"], 4),
+            rewards=round(v["rewards"], 4)
+        ) for k, v in sorted(daily_map.items())
+    ]
+    
+    return EconomicsSummary(
+        total_fees=round(total_fees, 4),
+        total_funding=round(total_funding, 4),
+        total_rewards=round(total_rewards, 4),
+        daily_history=daily_history
+    )
+
 
 @router.get("/news")
 def get_market_news(categories: str = "BTC,ETH,Trading"):

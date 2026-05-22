@@ -1,10 +1,19 @@
 from sqlmodel import SQLModel, create_engine, Session, text
 from api.config import config
 import sqlite3
+import api.models # Ensure models are registered for create_all
 
-engine = create_engine(config.DATABASE_URL)
+engine = create_engine(
+    config.DATABASE_URL, 
+    connect_args={"check_same_thread": False}
+)
 
 def init_db():
+    # Enable WAL mode for better concurrency
+    with engine.connect() as conn:
+        conn.execute(text("PRAGMA journal_mode=WAL"))
+        conn.commit()
+    
     # Create new tables (like price_alerts)
     SQLModel.metadata.create_all(engine)
     

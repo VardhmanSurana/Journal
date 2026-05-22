@@ -10,6 +10,9 @@ services:
       - .env:/app/.env
     env_file:
       - .env
+    environment:
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
     restart: unless-stopped
 
   frontend:

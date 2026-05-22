@@ -10,7 +10,7 @@ import {
 import { useCurrency } from '../hooks/useCurrency'
 import { useThemeClasses, useChartTheme } from '../utils/theme'
 import { API_BASE } from '../config/api'
-import { LoadingSpinner } from '../components/LoadingSpinner'
+import { SkeletonLoader } from '../components/SkeletonLoader'
 
 interface EconomicsData {
   total_fees: number
@@ -69,8 +69,8 @@ export const Economics = ({ theme }: { theme: 'light' | 'dark' }) => {
     }))
   }, [filteredHistory, convert])
 
-  if (loading) return <LoadingSpinner message="Analyzing financial logs..." />
-  if (!data) return <div className="p-8 text-center text-zinc-500 italic">No economic data found. Ensure your API key has "Read" permissions.</div>
+  if (loading) return <SkeletonLoader variant="economics" theme={theme} />
+  if (!data) return <div className="p-8 text-center text-zinc-500 italic animate-pulse">No economic data found. Ensure your API key has "Read" permissions.</div>
 
   return (
     <div className="space-y-6">

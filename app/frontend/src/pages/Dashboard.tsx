@@ -4,7 +4,7 @@ import { TrendingUp, TrendingDown, Target, Activity, History, ArrowUpRight, Arro
 import { useCurrency } from '../hooks/useCurrency'
 import { useThemeClasses, useChartTheme } from '../utils/theme'
 import { PerformanceCalendar } from '../components/Calendar'
-import { LoadingSpinner } from '../components/LoadingSpinner'
+import { SkeletonLoader } from '../components/SkeletonLoader'
 import { EmptyStateCard } from '../components/EmptyState'
 import { motion } from 'framer-motion'
 
@@ -96,7 +96,7 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
   }, [summary?.daily_pnl, convert])
 
   if (!summary) return (
-    <LoadingSpinner message="Syncing initial data..." />
+    <SkeletonLoader variant="dashboard" theme={theme} />
   )
 
   const convertedCumulativePnl = summary.cumulative_pnl.map((d: any) => ({

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { useCurrency } from '../hooks/useCurrency'
 import { useThemeClasses, useChartTheme } from '../utils/theme'
-import { LoadingSpinner } from '../components/LoadingSpinner'
+import { SkeletonLoader } from '../components/SkeletonLoader'
 
 interface AnalyticsProps {
   trades: any[]
@@ -103,7 +103,7 @@ export const Analytics = ({ trades, summary, theme }: AnalyticsProps) => {
 
   if (!analyticsData) {
     return (
-      <LoadingSpinner message="No trade data available for analytics." />
+      <SkeletonLoader variant="analytics" theme={theme} />
     )
   }
 

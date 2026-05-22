@@ -3,7 +3,8 @@ import axios from 'axios'
 import { useState, useEffect } from 'react'
 import { API_BASE } from '../config/api'
 import { useThemeClasses } from '../utils/theme'
-import { LoadingSpinner } from '../components/LoadingSpinner'
+import { SkeletonLoader } from '../components/SkeletonLoader'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface DailyReview {
   id: number
@@ -27,6 +28,29 @@ const MOODS = [
   { value: 'bad', label: 'Bad', icon: Frown, color: 'text-orange-400' },
   { value: 'terrible', label: 'Terrible', icon: Frown, color: 'text-rose-400' },
 ]
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08
+    }
+  }
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  show: { 
+    opacity: 1, 
+    y: 0, 
+    transition: { 
+      type: "spring", 
+      stiffness: 260, 
+      damping: 22 
+    } 
+  }
+}
 
 export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => {
   const [reviews, setReviews] = useState<DailyReview[]>([])
@@ -99,7 +123,7 @@ export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => 
   }
 
   if (loading) {
-    return <LoadingSpinner message="Loading journal entries..." />
+    return <SkeletonLoader variant="reviews" theme={theme} />
   }
 
   return (
@@ -122,9 +146,12 @@ export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => 
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {trades.filter(t => !t.notes).slice(0, 6).map(trade => (
-            <button
+            <motion.button
               key={trade.id}
               onClick={() => onReview(trade)}
+              whileHover={{ y: -4, scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
               className={`${bgClass} border rounded-xl p-4 text-left transition-all group ${
                 theme === 'dark' 
                   ? 'border-zinc-800 hover:border-zinc-600' 
@@ -154,137 +181,155 @@ export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => 
                   <Edit2 size={14} />
                 </div>
               </div>
-            </button>
+            </motion.button>
           ))}
         </div>
       </div>
 
-      {isEditing && editingReview && (
-        <div className={`${bgClass} rounded-xl border p-6 animate-in fade-in slide-in-from-top-4`}>
-          <div className="flex items-center justify-between mb-6">
-            <h3 className={`text-lg font-semibold ${textClass}`}>
-              {editingReview.id ? 'Edit Entry' : 'New Entry'}
-            </h3>
-            <button onClick={() => { setIsEditing(false); setEditingReview(null) }} className={`p-2 rounded-lg ${theme === 'dark' ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`}>
-              <X size={20} className="text-zinc-400" />
-            </button>
-          </div>
+      <AnimatePresence>
+        {isEditing && editingReview && (
+          <motion.div 
+            initial={{ opacity: 0, height: 0, y: -15 }}
+            animate={{ opacity: 1, height: "auto", y: 0 }}
+            exit={{ opacity: 0, height: 0, y: -15 }}
+            transition={{ type: "spring", stiffness: 200, damping: 24 }}
+            className={`${bgClass} rounded-xl border p-6 overflow-hidden`}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className={`text-lg font-semibold ${textClass}`}>
+                {editingReview.id ? 'Edit Entry' : 'New Entry'}
+              </h3>
+              <button onClick={() => { setIsEditing(false); setEditingReview(null) }} className={`p-2 rounded-lg ${theme === 'dark' ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`}>
+                <X size={20} className="text-zinc-400" />
+              </button>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-2">Date</label>
-              <input
-                type="date"
-                value={editingReview.date_str || ''}
-                onChange={(e) => setEditingReview({ ...editingReview, date_str: e.target.value })}
-                className={`w-full p-3 rounded-lg border ${
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">Date</label>
+                <input
+                  type="date"
+                  value={editingReview.date_str || ''}
+                  onChange={(e) => setEditingReview({ ...editingReview, date_str: e.target.value })}
+                  className={`w-full p-3 rounded-lg border ${
+                    theme === 'dark' 
+                      ? 'bg-zinc-850 border-zinc-700 text-white' 
+                      : 'bg-white border-zinc-200 text-zinc-900'
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">Mood</label>
+                <div className="flex gap-2">
+                  {MOODS.map(mood => {
+                    const Icon = mood.icon
+                    return (
+                      <motion.button
+                        key={mood.value}
+                        onClick={() => setEditingReview({ ...editingReview, mood: mood.value })}
+                        whileHover={{ y: -2, scale: 1.02 }}
+                        whileTap={{ scale: 0.95 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                        className={`flex-1 p-3 rounded-lg border transition-all ${
+                          editingReview.mood === mood.value
+                            ? theme === 'dark'
+                              ? 'border-zinc-400 bg-zinc-800 font-bold'
+                              : 'border-zinc-600 bg-zinc-100 font-bold'
+                            : theme === 'dark' 
+                              ? 'border-zinc-700 bg-zinc-850 hover:bg-zinc-800' 
+                              : 'border-zinc-200 bg-white hover:bg-zinc-50'
+                        }`}
+                      >
+                        <Icon className={`mx-auto mb-1 ${mood.color}`} size={20} />
+                        <span className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>{mood.label}</span>
+                      </motion.button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">
+                  Discipline Score: {editingReview.discipline_score}/10
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  value={editingReview.discipline_score || 5}
+                  onChange={(e) => setEditingReview({ ...editingReview, discipline_score: parseInt(e.target.value) })}
+                  className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-200'}`}
+                />
+                <div className="flex justify-between text-xs text-zinc-500 mt-1">
+                  <span>Poor</span>
+                  <span>Perfect</span>
+                </div>
+              </div>
+
+              <div className="md:col-span-2 grid grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-400 mb-2">Mistakes</label>
+                  <textarea
+                    value={editingReview.mistakes || ''}
+                    onChange={(e) => setEditingReview({ ...editingReview, mistakes: e.target.value })}
+                    placeholder="What mistakes did you make today?"
+                    rows={4}
+                    className={`w-full p-3 rounded-lg border resize-none ${
+                      theme === 'dark' 
+                        ? 'bg-zinc-850 border-zinc-700 text-white placeholder-zinc-500' 
+                        : 'bg-white border-zinc-200 text-zinc-900 placeholder-zinc-400'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-400 mb-2">Lessons</label>
+                  <textarea
+                    value={editingReview.lessons || ''}
+                    onChange={(e) => setEditingReview({ ...editingReview, lessons: e.target.value })}
+                    placeholder="What did you learn today?"
+                    rows={4}
+                    className={`w-full p-3 rounded-lg border resize-none ${
+                      theme === 'dark' 
+                        ? 'bg-zinc-850 border-zinc-700 text-white placeholder-zinc-500' 
+                        : 'bg-white border-zinc-200 text-zinc-900 placeholder-zinc-400'
+                    }`}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => { setIsEditing(false); setEditingReview(null) }}
+                className="px-4 py-2 text-zinc-400 hover:text-zinc-500 transition-colors"
+              >
+                Cancel
+              </button>
+              <motion.button
+                onClick={handleSave}
+                whileHover={{ scale: 1.02, y: -1 }}
+                whileTap={{ scale: 0.98 }}
+                className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-colors ${
                   theme === 'dark' 
-                    ? 'bg-zinc-850 border-zinc-700 text-white' 
-                    : 'bg-white border-zinc-200 text-zinc-900'
+                    ? 'bg-zinc-100 hover:bg-white text-zinc-950' 
+                    : 'bg-zinc-900 hover:bg-zinc-850 text-white shadow-sm'
                 }`}
-              />
+              >
+                <Save size={18} />
+                <span>Save Entry</span>
+              </motion.button>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-2">Mood</label>
-              <div className="flex gap-2">
-                {MOODS.map(mood => {
-                  const Icon = mood.icon
-                  return (
-                    <button
-                      key={mood.value}
-                      onClick={() => setEditingReview({ ...editingReview, mood: mood.value })}
-                      className={`flex-1 p-3 rounded-lg border transition-all ${
-                        editingReview.mood === mood.value
-                          ? theme === 'dark'
-                            ? 'border-zinc-400 bg-zinc-800'
-                            : 'border-zinc-600 bg-zinc-100 font-bold'
-                          : theme === 'dark' 
-                            ? 'border-zinc-700 bg-zinc-850 hover:bg-zinc-800' 
-                            : 'border-zinc-200 bg-white hover:bg-zinc-50'
-                      }`}
-                    >
-                      <Icon className={`mx-auto mb-1 ${mood.color}`} size={20} />
-                      <span className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>{mood.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-2">
-                Discipline Score: {editingReview.discipline_score}/10
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={editingReview.discipline_score || 5}
-                onChange={(e) => setEditingReview({ ...editingReview, discipline_score: parseInt(e.target.value) })}
-                className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-200'}`}
-              />
-              <div className="flex justify-between text-xs text-zinc-500 mt-1">
-                <span>Poor</span>
-                <span>Perfect</span>
-              </div>
-            </div>
-
-            <div className="md:col-span-2 grid grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-2">Mistakes</label>
-                <textarea
-                  value={editingReview.mistakes || ''}
-                  onChange={(e) => setEditingReview({ ...editingReview, mistakes: e.target.value })}
-                  placeholder="What mistakes did you make today?"
-                  rows={4}
-                  className={`w-full p-3 rounded-lg border resize-none ${
-                    theme === 'dark' 
-                      ? 'bg-zinc-850 border-zinc-700 text-white placeholder-zinc-500' 
-                      : 'bg-white border-zinc-200 text-zinc-900 placeholder-zinc-400'
-                  }`}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-2">Lessons</label>
-                <textarea
-                  value={editingReview.lessons || ''}
-                  onChange={(e) => setEditingReview({ ...editingReview, lessons: e.target.value })}
-                  placeholder="What did you learn today?"
-                  rows={4}
-                  className={`w-full p-3 rounded-lg border resize-none ${
-                    theme === 'dark' 
-                      ? 'bg-zinc-850 border-zinc-700 text-white placeholder-zinc-500' 
-                      : 'bg-white border-zinc-200 text-zinc-900 placeholder-zinc-400'
-                  }`}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 mt-6">
-            <button
-              onClick={() => { setIsEditing(false); setEditingReview(null) }}
-              className="px-4 py-2 text-zinc-400 hover:text-zinc-500 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-colors ${
-                theme === 'dark' 
-                  ? 'bg-zinc-100 hover:bg-white text-zinc-950' 
-                  : 'bg-zinc-900 hover:bg-zinc-850 text-white shadow-sm'
-              }`}
-            >
-              <Save size={18} />
-              <span>Save Entry</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-4">
+      <motion.div 
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+        className="space-y-4"
+      >
         {reviews.length === 0 ? (
           <div className={`${bgClass} rounded-xl border p-12 text-center`}>
             <BookOpen size={48} className={`mx-auto mb-4 ${subTextClass}`} />
@@ -295,7 +340,7 @@ export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => 
             const moodData = getMoodData(review.mood)
             const MoodIcon = moodData.icon
             return (
-              <div key={review.id} className={`${bgClass} rounded-xl border p-6`}>
+              <motion.div key={review.id} variants={itemVariants} className={`${bgClass} rounded-xl border p-6`}>
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-4">
                     <div className={`p-3 rounded-lg ${cardBgClass}`}>
@@ -366,11 +411,11 @@ export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => 
                     </div>
                   )}
                 </div>
-              </div>
+              </motion.div>
             )
           })
         )}
-      </div>
+      </motion.div>
     </div>
   )
 }

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./app/frontend/public/logo.png" alt="Delta Journal Logo" width="128" style="border-radius: 24px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);" />
+</p>
+
 # 🔺 Delta Journal
 
 Automated, high-fidelity crypto trading journal tailored specifically for **Delta Exchange** users. Equipped with an event-driven FIFO trade matching engine, Indian speculative tax calculations, AES-128 field-level encrypted notes, and a sleek, real-time React dashboard.

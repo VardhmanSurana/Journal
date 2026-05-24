@@ -14,7 +14,8 @@ import {
   Wifi,
   WifiOff,
   Activity,
-  AlertTriangle
+  AlertTriangle,
+  Upload
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -68,6 +69,7 @@ export const Sidebar = ({
     { id: 'fees-funding', label: 'Fees & Funding', icon: Landmark, path: '/fees-funding' },
     { id: 'journal', label: 'Journal', icon: BookOpen, path: '/journal' },
     { id: 'maintenance', label: 'Maintenance', icon: Settings, path: '/maintenance' },
+    { id: 'import', label: 'Import Data', icon: Upload, path: '/import' },
   ]
 
   return (

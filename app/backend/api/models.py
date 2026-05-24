@@ -192,6 +192,18 @@ class DashboardSummary(BaseModel):
     max_drawdown: float
     total_turnover: float
     
+    # Advanced risk metrics
+    sharpe_ratio: float = 0
+    sortino_ratio: float = 0
+    calmar_ratio: float = 0
+    max_consecutive_wins: int = 0
+    max_consecutive_losses: int = 0
+    current_streak: int = 0
+    current_streak_type: str = ""
+    avg_holding_minutes: float = 0
+    total_gross_profit: float = 0
+    total_gross_loss: float = 0
+    
     cumulative_pnl: List[Dict[str, Any]] = []
     daily_pnl: List[Dict[str, Any]] = [] # [{"date": "YYYY-MM-DD", "value": ...}]
     pnl_by_symbol: List[Dict[str, Any]] = []

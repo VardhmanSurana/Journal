@@ -100,13 +100,6 @@ def _headers(method: str, path: str, query: str = "", body: str = "") -> dict[st
     }
 
 
-def _log_redacted(url: str, headers: dict[str, str]) -> None:
-    """Log request info while redacting secrets."""
-    redacted_hdrs = {k: ("***" if k.lower() in ["api-key", "signature", "authorization"] else v) for k, v in headers.items()}
-    safe_url = url.split("?")[0]
-    print(f"DEBUG: Delta API Request to {safe_url} | Headers: {redacted_hdrs}")
-
-
 # ---------------------------------------------------------------------------
 # Core request — with retry/backoff (D5) and safe error wrapping (S1)
 # ---------------------------------------------------------------------------
@@ -129,7 +122,6 @@ def _get(path: str, params: dict[str, Any] | None = None, public: bool = False) 
     last_exc: Exception | None = None
     for attempt in range(_MAX_RETRIES + 1):
         try:
-            _log_redacted(url, hdrs)
             response = requests.get(url, params=params, headers=hdrs, timeout=15)
 
             # Handle Rate Limits (E)
@@ -142,7 +134,7 @@ def _get(path: str, params: dict[str, Any] | None = None, public: bool = False) 
             # Handle Timestamp Drift (F)
             if response.status_code == 401 and "timestamp" in response.text.lower() and attempt == 0:
                 print("WARNING: Auth failed due to timestamp drift. Re-syncing clock and retrying...")
-                hdrs.update(_headers("GET", f"/v2{path}", query, read_only=read_only))
+                hdrs.update(_headers("GET", f"/v2{path}", query))
                 continue
 
             if response.status_code in _RETRY_STATUSES and attempt < _MAX_RETRIES:
@@ -259,6 +251,25 @@ def fetch_positions(product_id: int | None = None) -> list[dict]:
     return data.get("result", [])
 
 
+def fetch_ohlc(symbol: str, resolution: str = "1h", start: int = 0, end: int = 0) -> list[dict]:
+    """
+    Fetch historical OHLC candles for a product symbol.
+    Resolution options: 1m, 5m, 15m, 30m, 1h, 4h, 6h, 1d
+    Returns list of candles: {timestamp, open, high, low, close, volume}
+    """
+    params: dict[str, Any] = {
+        "symbol": symbol,
+        "resolution": resolution,
+        "start": start,
+        "end": end,
+    }
+    data = _get("/history/candles", params, public=True)
+    result = data.get("result", [])
+    for c in result:
+        c["timestamp"] = c.pop("time")
+    return result
+
+
 def fetch_products(contract_types: str = "") -> list[dict]:
     """
     Fetch available products/trading pairs.
@@ -337,3 +348,34 @@ def fetch_rss_news() -> list[dict]:
             print(f"RSS fetch failed for {url}: {e}")
             
     return all_entries
+
+
+COINGECKO_IDS = {
+    "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
+    "XRP": "ripple", "ADA": "cardano", "DOGE": "dogecoin",
+    "AVAX": "avalanche-2", "DOT": "polkadot", "LINK": "chainlink",
+    "MATIC": "matic-network", "ATOM": "cosmos", "UNI": "uniswap",
+    "PEPE": "pepe", "SHIB": "shiba-inu", "ARB": "arbitrum",
+    "OP": "optimism", "APT": "aptos", "SUI": "sui",
+}
+
+
+def fetch_benchmark(symbol: str, start_ts: int) -> list[dict]:
+    coin_id = COINGECKO_IDS.get(symbol.upper(), symbol.lower())
+    end_ts = int(time.time())
+    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart/range"
+    params = {"vs_currency": "usd", "from": start_ts, "to": end_ts}
+    resp = requests.get(url, params=params, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+    prices = data.get("prices", [])
+    if not prices:
+        return []
+    base_price = prices[0][1]
+    return [{"date": __timestamp_to_date(ts // 1000), "value": round((p / base_price - 1) * 100, 2)}
+            for ts, p in prices]
+
+
+def __timestamp_to_date(ts: int) -> str:
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")

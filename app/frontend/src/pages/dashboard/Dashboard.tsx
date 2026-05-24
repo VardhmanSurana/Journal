@@ -1,8 +1,15 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import axios from 'axios'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { TrendingUp, Activity, History, ArrowUpRight, ArrowDownRight, Clock, Zap } from 'lucide-react'
+import { TrendingUp, Activity, History, ArrowUpRight, ArrowDownRight, Clock, Wallet, ChevronDown, ChevronUp, TrendingDown } from 'lucide-react'
+import { API_BASE } from '../../config/api'
 import { useCurrency } from '../../hooks/useCurrency'
 import { useChartTheme } from '../../utils/theme'
+
+function round(v: number, decimals: number) {
+  const f = Math.pow(10, decimals)
+  return Math.round(v * f) / f
+}
 import { PerformanceCalendar } from './components/Calendar'
 import { SkeletonLoader } from '../../components/SkeletonLoader'
 import { EmptyStateCard } from './components/EmptyState'
@@ -43,7 +50,11 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
   const { format, currency, rate, convert } = useCurrency()
   const chartTheme = useChartTheme(theme)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [benchmarkSymbol, setBenchmarkSymbol] = useState<string | null>(null)
+  const [benchmarkData, setBenchmarkData] = useState<{date: string; value: number}[] | null>(null)
+  const [benchmarkLoading, setBenchmarkLoading] = useState(false)
+
   // Hooks
   const filteredTrades = useMemo(() => {
     if (!selectedDate) return allTrades.slice(0, 5) // Default to 5 most recent if no date
@@ -94,6 +105,31 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
     }))
   }, [summary?.daily_pnl, convert])
 
+  const firstTradeDate = useMemo(() => {
+    if (!allTrades || allTrades.length === 0) return ''
+    const dates = allTrades.map((t: any) => t.exit_time || t.entry_time).filter(Boolean).sort()
+    return dates[0]?.slice(0, 10) || ''
+  }, [allTrades])
+
+  useEffect(() => {
+    if (!benchmarkSymbol || !firstTradeDate) {
+      setBenchmarkData(null)
+      return
+    }
+    let cancelled = false
+    setBenchmarkLoading(true)
+    axios.get(`${API_BASE}/benchmark`, {
+      params: { symbol: benchmarkSymbol, start_date: firstTradeDate }
+    }).then(res => {
+      if (!cancelled) setBenchmarkData(res.data || [])
+    }).catch(() => {
+      if (!cancelled) setBenchmarkData(null)
+    }).finally(() => {
+      if (!cancelled) setBenchmarkLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [benchmarkSymbol, firstTradeDate])
+
   const growthPercentage = useMemo(() => {
     if (!summary?.cumulative_pnl || summary.cumulative_pnl.length < 2) return '+0.0%'
     const first = summary.cumulative_pnl[0].value
@@ -103,14 +139,29 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
     return pct >= 0 ? `+${pct.toFixed(2)}%` : `${pct.toFixed(2)}%`
   }, [summary?.cumulative_pnl])
 
+  const convertedCumulativePnl = useMemo(() => {
+    if (!summary?.cumulative_pnl) return []
+    return summary.cumulative_pnl.map((d: any) => ({
+      ...d,
+      value: convert(d.value)
+    }))
+  }, [summary?.cumulative_pnl, convert])
+
+  const chartData = useMemo(() => {
+    if (convertedCumulativePnl.length === 0) return []
+    const base = convertedCumulativePnl[0].value
+    const bm = benchmarkData || []
+    const bmMap = new Map(bm.map((d: any) => [d.date, d.value]))
+    return convertedCumulativePnl.map((d: any) => ({
+      ...d,
+      equityPct: base !== 0 ? round(((d.value - base) / Math.abs(base)) * 100, 2) : 0,
+      benchmark: bmMap.get(d.date) ?? null,
+    }))
+  }, [convertedCumulativePnl, benchmarkData])
+
   if (!summary) return (
     <SkeletonLoader variant="dashboard" theme={theme} />
   )
-
-  const convertedCumulativePnl = summary.cumulative_pnl.map((d: any) => ({
-    ...d,
-    value: convert(d.value)
-  }))
 
   return (
     <div className="space-y-6">
@@ -189,7 +240,7 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
           </div>
         </motion.div>
 
-        {/* Profit Factor */}
+        {/* Wallet Balance */}
         <motion.div 
           variants={itemVariants} 
           className={`p-6 rounded-2xl transition-all duration-300 hover:-translate-y-[2px] relative overflow-hidden ${
@@ -198,15 +249,132 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
               : 'bg-white border border-zinc-200 hover:border-zinc-300 shadow-sm'
           }`}
         >
-          <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Profit Factor</div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Wallet Balance</div>
           <div className={`text-4xl font-black mt-2 ${theme === 'dark' ? 'text-zinc-100' : 'text-zinc-800'}`}>
-            {summary.profit_factor}
+            {summary.wallet && summary.wallet.length > 0
+              ? format(summary.wallet.reduce((sum: number, w: any) => sum + w.balance, 0))
+              : format(0)}
           </div>
           <div className="mt-4 text-[10px] text-zinc-500 flex items-center gap-1">
-            <Zap size={11} className="text-zinc-500" />
-            <span>Gross / gross loss</span>
+            <Wallet size={11} className="text-zinc-500" />
+            <span>
+              {summary.wallet && summary.wallet.length > 0
+                ? `${summary.wallet.length} asset${summary.wallet.length > 1 ? 's' : ''}`
+                : 'No wallet data'}
+            </span>
           </div>
         </motion.div>
+      </motion.div>
+
+      {/* Advanced Metrics Toggle */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.2 }}
+      >
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className={`w-full flex items-center justify-between px-6 py-4 rounded-2xl transition-all mb-6 border ${
+            theme === 'dark'
+              ? 'bg-zinc-900/20 border-zinc-800/50 hover:border-zinc-700'
+              : 'bg-white border-zinc-200 hover:border-zinc-300 shadow-sm'
+          }`}
+        >
+          <span className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+            Advanced Risk Metrics
+          </span>
+          <div className="flex items-center gap-4">
+            {summary.sharpe_ratio > 0 && (
+              <span className={`text-[10px] font-mono font-bold ${summary.sharpe_ratio >= 1 ? 'text-emerald-500' : summary.sharpe_ratio >= 0 ? 'text-amber-500' : 'text-red-500'}`}>
+                Sharpe {summary.sharpe_ratio}
+              </span>
+            )}
+            {showAdvanced ? <ChevronUp size={16} className="text-zinc-500" /> : <ChevronDown size={16} className="text-zinc-500" />}
+          </div>
+        </button>
+
+        {showAdvanced && (
+          <div className={`mb-6 p-6 rounded-2xl border ${
+            theme === 'dark' ? 'bg-zinc-900/20 border-zinc-800/50' : 'bg-white border-zinc-200 shadow-sm'
+          }`}>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {/* Sharpe */}
+              <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-50'}`}>
+                <div className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Sharpe</div>
+                <div className={`text-lg font-black mt-1 ${summary.sharpe_ratio >= 1 ? 'text-emerald-500' : summary.sharpe_ratio >= 0 ? 'text-amber-500' : 'text-red-500'}`}>
+                  {summary.sharpe_ratio}
+                </div>
+              </div>
+              {/* Sortino */}
+              <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-50'}`}>
+                <div className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Sortino</div>
+                <div className={`text-lg font-black mt-1 ${summary.sortino_ratio >= 1 ? 'text-emerald-500' : summary.sortino_ratio >= 0 ? 'text-amber-500' : 'text-red-500'}`}>
+                  {summary.sortino_ratio}
+                </div>
+              </div>
+              {/* Calmar */}
+              <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-50'}`}>
+                <div className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Calmar</div>
+                <div className={`text-lg font-black mt-1 ${summary.calmar_ratio >= 1 ? 'text-emerald-500' : summary.calmar_ratio >= 0 ? 'text-amber-500' : 'text-red-500'}`}>
+                  {summary.calmar_ratio}
+                </div>
+              </div>
+              {/* Profit Factor */}
+              <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-50'}`}>
+                <div className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Profit Factor</div>
+                <div className={`text-lg font-black mt-1 ${summary.profit_factor >= 1.5 ? 'text-emerald-500' : summary.profit_factor >= 1 ? 'text-amber-500' : 'text-red-500'}`}>
+                  {summary.profit_factor >= 999 ? '∞' : summary.profit_factor}
+                </div>
+              </div>
+              {/* Max Consecutive Wins */}
+              <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-50'}`}>
+                <div className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Max Win Streak</div>
+                <div className={`text-lg font-black mt-1 text-emerald-500`}>{summary.max_consecutive_wins}</div>
+              </div>
+              {/* Max Consecutive Losses */}
+              <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-50'}`}>
+                <div className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Max Loss Streak</div>
+                <div className={`text-lg font-black mt-1 text-red-500`}>{summary.max_consecutive_losses}</div>
+              </div>
+              {/* Current Streak */}
+              <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-50'}`}>
+                <div className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Current Streak</div>
+                <div className={`text-lg font-black mt-1 ${summary.current_streak_type === 'W' ? 'text-emerald-500' : summary.current_streak_type === 'L' ? 'text-red-500' : ''}`}>
+                  {summary.current_streak > 0 ? `${summary.current_streak}${summary.current_streak_type}` : '—'}
+                </div>
+              </div>
+              {/* Avg Holding */}
+              <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-50'}`}>
+                <div className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Avg Hold</div>
+                <div className={`text-lg font-black mt-1 ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>
+                  {summary.avg_holding_minutes > 0 ? `${Math.round(summary.avg_holding_minutes / 60)}h` : '—'}
+                </div>
+              </div>
+              {/* Gross P&L */}
+              <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-50'}`}>
+                <div className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Gross Profit</div>
+                <div className={`text-lg font-black mt-1 text-emerald-500`}>{summary.total_gross_profit > 0 ? format(summary.total_gross_profit) : '—'}</div>
+              </div>
+              {/* Gross Loss */}
+              <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-50'}`}>
+                <div className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Gross Loss</div>
+                <div className={`text-lg font-black mt-1 text-red-500`}>{summary.total_gross_loss > 0 ? format(summary.total_gross_loss) : '—'}</div>
+              </div>
+              {/* Max Drawdown */}
+              <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-50'}`}>
+                <div className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Max Drawdown</div>
+                <div className={`text-lg font-black mt-1 ${summary.max_drawdown > 0 ? 'text-red-500' : 'text-zinc-400'}`}>
+                  {summary.max_drawdown > 0 ? format(summary.max_drawdown) : '—'}
+                </div>
+              </div>
+              {/* Total Trades */}
+              <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-50'}`}>
+                <div className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Total Trades</div>
+                <div className={`text-lg font-black mt-1 ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>{summary.total_trades}</div>
+              </div>
+            </div>
+          </div>
+        )}
       </motion.div>
 
       <motion.div 
@@ -322,7 +490,7 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
             ? 'bg-zinc-900/40 border-zinc-800' 
             : 'bg-white border-zinc-200 shadow-sm'
         }`}>
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex justify-between items-center mb-4">
             <div>
               <h3 className={`text-lg font-bold ${theme === 'dark' ? 'text-white' : 'text-zinc-900'} flex items-center gap-2`}>
                 <Activity size={18} className="text-zinc-400" /> Equity Growth
@@ -340,18 +508,49 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
               {growthPercentage}
             </div>
           </div>
+
+          {/* Benchmark Toggle */}
+          <div className="flex items-center gap-2 mb-4">
+            <span className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'}`}>
+              Benchmark
+            </span>
+            {['BTC', 'ETH', 'SOL'].map((sym) => (
+              <button
+                key={sym}
+                onClick={() => setBenchmarkSymbol(benchmarkSymbol === sym ? null : sym)}
+                className={`px-3 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg border transition-all ${
+                  benchmarkSymbol === sym
+                    ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                    : theme === 'dark'
+                      ? 'bg-zinc-800/50 text-zinc-500 border-zinc-700/50 hover:border-zinc-600'
+                      : 'bg-zinc-100 text-zinc-500 border-zinc-200 hover:border-zinc-300'
+                }`}
+              >
+                {sym}
+                {benchmarkSymbol === sym && <span className="ml-1">✕</span>}
+              </button>
+            ))}
+            {benchmarkLoading && <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-zinc-500" />}
+          </div>
+
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={convertedCumulativePnl}>
+              <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor={summary.total_net_pnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.2}/>
                     <stop offset="95%" stopColor={summary.total_net_pnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0}/>
                   </linearGradient>
+                  <linearGradient id="benchGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.gridColor} vertical={false} opacity={theme === 'dark' ? 0.15 : 0.4} />
                 <XAxis dataKey="date" stroke={chartTheme.axisColor} fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke={chartTheme.axisColor} fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
+                <YAxis stroke={chartTheme.axisColor} fontSize={10} tickLine={false} axisLine={false}
+                  tickFormatter={(v) => benchmarkSymbol ? `${v.toFixed(1)}%` : `$${v.toFixed(0)}`}
+                />
                 <Tooltip 
                   contentStyle={{ 
                     backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff', 
@@ -361,16 +560,34 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
                   }}
                   itemStyle={{ color: theme === 'dark' ? '#f4f4f5' : '#18181b', fontWeight: 'bold' }}
                   labelStyle={{ color: '#71717a', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                  formatter={(value: number, name: string) => {
+                    const labels: Record<string, string> = { value: 'P&L', equityPct: 'Your Return %', benchmark: `${benchmarkSymbol || 'Benchmark'} %` }
+                    const fmt = name === 'value' ? `$${value.toFixed(2)}` : `${value.toFixed(2)}%`
+                    return [fmt, labels[name] || name]
+                  }}
                 />
                 <Area 
                   type="monotone" 
-                  dataKey="value" 
+                  dataKey={benchmarkSymbol ? 'equityPct' : 'value'} 
                   stroke={summary.total_net_pnl >= 0 ? '#10b981' : '#ef4444'} 
                   strokeWidth={3} 
                   fillOpacity={1} 
                   fill="url(#equityGradient)" 
                   dot={false} 
                 />
+                {benchmarkSymbol && (
+                  <Area 
+                    type="monotone" 
+                    dataKey="benchmark" 
+                    stroke="#3b82f6" 
+                    strokeWidth={2} 
+                    strokeDasharray="4 3"
+                    fillOpacity={1} 
+                    fill="url(#benchGradient)" 
+                    dot={false} 
+                    connectNulls
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -438,7 +655,7 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
         }`}>
           <div className="flex justify-between items-center mb-6">
             <h3 className={`text-lg font-bold ${theme === 'dark' ? 'text-white' : 'text-zinc-900'} flex items-center gap-2`}>
-              <Zap size={18} className="text-amber-400" /> Open Positions
+              Open Positions
             </h3>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />

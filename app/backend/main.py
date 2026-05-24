@@ -8,6 +8,7 @@ import asyncio
 import os
 from api.database import init_db, engine
 from api.sync import run_sync
+from api.ws_client import connect as ws_connect
 from sqlmodel import Session
 
 app = FastAPI(title="Delta Journal API")
@@ -51,6 +52,9 @@ async def on_startup():
         except Exception as e:
             print(f"Initial startup sync failed: {e}")
     
+    # Trigger WebSocket connection for real-time data
+    asyncio.create_task(ws_connect())
+
     # Run initial sync and start heartbeat
     asyncio.create_task(background_heartbeat())
     asyncio.create_task(asyncio.to_thread(initial_sync))

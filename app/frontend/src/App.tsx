@@ -7,6 +7,7 @@ import { Analytics } from './pages/analytics/Analytics'
 import { FeesFunding } from './pages/feesFunding/FeesFunding'
 import { Journal } from './pages/journal/Journal'
 import { Maintenance } from './pages/maintenance/Maintenance'
+import { ImportData } from './pages/imports/ImportData'
 import { CurrencyProvider, useCurrency } from './hooks/useCurrency'
 import { CurrencyToggle } from './components/CurrencyToggle'
 import { Sidebar } from './components/Sidebar'
@@ -192,7 +193,8 @@ function AppContent() {
                activeTab === 'analytics' ? 'Analysis' :
                activeTab === 'fees-funding' ? 'Fees & Funding' :
                activeTab === 'journal' ? 'Journal' :
-               activeTab === 'maintenance' ? 'Maintenance' : 'Page'}
+               activeTab === 'maintenance' ? 'Maintenance' :
+               activeTab === 'import' ? 'Import Data' : 'Page'}
             </h2>
             <h1 className={`text-2xl font-bold ${
               theme === 'dark' ? 'text-white' : 'text-zinc-900'
@@ -202,7 +204,8 @@ function AppContent() {
                activeTab === 'analytics' ? 'Analytics Center' :
                activeTab === 'fees-funding' ? 'Fees & Funding' :
                activeTab === 'journal' ? 'Journal' :
-               activeTab === 'maintenance' ? 'Maintenance' : 'Page'}
+               activeTab === 'maintenance' ? 'Maintenance' :
+               activeTab === 'import' ? 'Import Data' : 'Page'}
             </h1>
           </div>
           
@@ -465,6 +468,7 @@ function AppContent() {
             <Route path="/fees-funding" element={<FeesFunding theme={theme} />} />
             <Route path="/journal" element={<Journal theme={theme} trades={trades} onReview={(trade) => setReviewingTrade(trade)} />} />
             <Route path="/maintenance" element={<Maintenance theme={theme} />} />
+            <Route path="/import" element={<ImportData theme={theme} />} />
           </Routes>
         </div>
       </main>

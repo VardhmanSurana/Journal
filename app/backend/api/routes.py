@@ -12,9 +12,11 @@ from api.models import (
     DailyReview, PriceAlert, Transaction, EconomicsSummary, EconomicsDaily,
     Screenshot
 )
-from api.client import fetch_fills, fetch_wallet_balance, fetch_positions, fetch_tickers, fetch_news, fetch_rss_news
+from api.client import fetch_fills, fetch_wallet_balance, fetch_positions, fetch_tickers, fetch_news, fetch_rss_news, fetch_ohlc, fetch_benchmark
+from api.ai import analyze_trade
 from api.config import config
 from api.encryption import encrypt_text, decrypt_text
+from api import ws_client
 
 router = APIRouter()
 
@@ -99,6 +101,10 @@ def get_summary(session: Session = Depends(get_session)):
             total_net_pnl=0, total_commission=0, total_profit_after_tax=0,
             best_trade=0, worst_trade=0, avg_win=0, avg_loss=0,
             profit_factor=0, expectancy=0, max_drawdown=0, total_turnover=0,
+            sharpe_ratio=0, sortino_ratio=0, calmar_ratio=0,
+            max_consecutive_wins=0, max_consecutive_losses=0,
+            current_streak=0, current_streak_type="",
+            avg_holding_minutes=0, total_gross_profit=0, total_gross_loss=0,
             cumulative_pnl=[], pnl_by_symbol=[], wallet=wallet_data
         )
     
@@ -143,6 +149,50 @@ def get_summary(session: Session = Depends(get_session)):
         symbol_map[t.symbol] = symbol_map.get(t.symbol, 0) + t.net_profit
     pnl_by_symbol = [{"symbol": k, "value": round(v, 2)} for k, v in symbol_map.items()]
 
+    # Advanced risk metrics
+    import math
+    daily_values = [d["value"] for d in daily_pnl_data]
+    n = len(daily_values)
+    if n > 1:
+        mean_daily = sum(daily_values) / n
+        variance = sum((v - mean_daily) ** 2 for v in daily_values) / (n - 1)
+        std_daily = math.sqrt(variance)
+        downside_vals = [(v - mean_daily) for v in daily_values if v < mean_daily]
+        downside_std = math.sqrt(sum(d ** 2 for d in downside_vals) / (n - 1)) if downside_vals else 1e-10
+        annualization = math.sqrt(365)
+        sharpe = (mean_daily / std_daily * annualization) if std_daily > 1e-10 else 0
+        sortino = (mean_daily / downside_std * annualization) if downside_std > 1e-10 else 0
+        annualized_return = mean_daily * 365
+        calmar = (annualized_return / max_dd) if max_dd > 1e-10 else 0
+    else:
+        sharpe = sortino = calmar = 0
+
+    max_cons_wins = max_cons_losses = 0
+    cur_streak = cur_run = 0
+    cur_type = ""
+    for t in trades:
+        if t.is_winner:
+            cur_run = cur_run + 1 if cur_run >= 0 else 1
+        else:
+            cur_run = cur_run - 1 if cur_run <= 0 else -1
+        if cur_run > max_cons_wins:
+            max_cons_wins = cur_run
+        if -cur_run > max_cons_losses:
+            max_cons_losses = -cur_run
+    if trades:
+        last = trades[-1]
+        cur_streak = 0
+        for t in reversed(trades):
+            if t.is_winner == last.is_winner:
+                cur_streak += 1
+            else:
+                break
+        cur_type = "W" if last.is_winner else "L"
+
+    avg_hold = sum(t.holding_minutes or 0 for t in trades) / len(trades) if trades else 0
+    total_gross_profit = gross_profit
+    total_gross_loss = gross_loss
+
     return DashboardSummary(
         total_trades=len(trades),
         winners=len(winners),
@@ -162,52 +212,154 @@ def get_summary(session: Session = Depends(get_session)):
         cumulative_pnl=cumulative_data,
         daily_pnl=daily_pnl_data,
         pnl_by_symbol=pnl_by_symbol,
+        sharpe_ratio=round(sharpe, 2),
+        sortino_ratio=round(sortino, 2),
+        calmar_ratio=round(calmar, 2),
+        max_consecutive_wins=max_cons_wins,
+        max_consecutive_losses=max_cons_losses,
+        current_streak=cur_streak,
+        current_streak_type=cur_type,
+        avg_holding_minutes=round(avg_hold, 0),
+        total_gross_profit=round(total_gross_profit, 2),
+        total_gross_loss=round(total_gross_loss, 2),
         wallet=wallet_data
     )
 
 
 @router.get("/positions")
 def get_positions():
-    """Get current open positions with unrealized P&L."""
-    from api.client import fetch_positions, fetch_tickers
-    
-    # Try common underlying assets
-    common_assets = ["BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "MATIC", "AVAX"]
-    all_positions = []
-    
-    for asset in common_assets:
-        try:
-            positions = fetch_positions(asset)
-            if positions:
-                all_positions.extend(positions)
-        except Exception:
-            continue
-    
-    # Get tickers for all symbols
-    try:
-        tickers = {t.get("symbol"): t for t in fetch_tickers(",".join(common_assets))}
-    except Exception:
-        tickers = {}
-    
+    """Get current open positions with unrealized P&L.
+    Uses WebSocket real-time data as primary source, falls back to REST API."""
+    positions = ws_client.get_positions()
+    tickers = ws_client.get_tickers()
+
+    if not positions:
+        from api.client import fetch_positions as rest_positions, fetch_tickers as rest_tickers
+
+        common_assets = ["BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "AVAX", "MATIC"]
+        for asset in common_assets:
+            try:
+                p = rest_positions(asset)
+                if p:
+                    positions.extend(p)
+            except Exception:
+                continue
+
+        if not tickers:
+            try:
+                for t in rest_tickers(",".join(common_assets)):
+                    tickers[t.get("symbol")] = t
+            except Exception:
+                pass
+
     result = []
-    for pos in all_positions:
-        symbol = pos.get("product_symbol", "")
+    for pos in positions:
+        symbol = pos.get("product_symbol") or pos.get("symbol", "")
         ticker = tickers.get(symbol, {})
-        
+
         result.append({
             "symbol": symbol,
-            "size": pos.get("size", 0),
-            "entry_price": pos.get("entry_price", 0),
-            "mark_price": ticker.get("mark_price", pos.get("mark_price", 0)),
-            "unrealized_pnl": pos.get("unrealized_pnl", 0),
-            "margin_used": pos.get("margin_used", 0),
-            "leverage": pos.get("leverage", 0),
+            "size": float(pos.get("size", 0)),
+            "entry_price": float(pos.get("entry_price", 0)),
+            "mark_price": float(ticker.get("mark_price", pos.get("mark_price", 0))),
+            "unrealized_pnl": float(pos.get("unrealized_pnl", 0)),
+            "margin_used": float(pos.get("margin_used", 0)),
+            "leverage": float(pos.get("leverage", 1)),
             "side": pos.get("side", ""),
-            "liq_price": pos.get("liq_price", 0),
+            "liq_price": float(pos.get("liq_price", 0)),
+            "funding_rate": float(ticker.get("funding_rate", 0)),
         })
-    
+
     return result
 
+
+@router.get("/wallet")
+def get_wallet_balance():
+    """Get wallet balances with real-time margin data from WebSocket."""
+    margins = ws_client.get_margins()
+
+    if margins and isinstance(margins, dict):
+        return [{
+            "asset": margins.get("asset_symbol", "USD"),
+            "balance": float(margins.get("balance", 0)),
+            "available": float(margins.get("available_balance", 0)),
+            "equity": float(margins.get("equity", 0)),
+        }]
+
+    from api.client import fetch_wallet_balance as rest_wallet
+    try:
+        raw = rest_wallet()
+        return [{
+            "asset": w.get("asset_symbol"),
+            "balance": float(w.get("balance", 0)),
+            "available": float(w.get("available_balance", 0)),
+            "equity": float(w.get("equity", 0)),
+        } for w in raw if float(w.get("balance", 0)) > 0]
+    except Exception:
+        return []
+
+
+@router.get("/funding-rates")
+def get_funding_rates():
+    """Get live funding rates per symbol from WebSocket ticker cache."""
+    tickers = ws_client.get_tickers()
+    result = []
+    for symbol, t in tickers.items():
+        rate = float(t.get("funding_rate", 0))
+        result.append({
+            "symbol": symbol,
+            "funding_rate": rate,
+            "annualized_pct": round(rate * 3 * 365 * 100, 4),
+            "mark_price": float(t.get("mark_price", 0)),
+            "funding_interval_hours": 8,
+        })
+
+    if not result:
+        from api.client import fetch_tickers as rest_tickers
+        try:
+            for t in rest_tickers():
+                symbol = t.get("symbol", "")
+                rate = float(t.get("funding_rate", 0))
+                result.append({
+                    "symbol": symbol,
+                    "funding_rate": rate,
+                    "annualized_pct": round(rate * 3 * 365 * 100, 4),
+                    "mark_price": float(t.get("mark_price", 0)),
+                    "funding_interval_hours": 8,
+                })
+        except Exception:
+            pass
+
+    return result
+
+
+@router.get("/products/enriched")
+def get_enriched_products():
+    """Get product catalog with contract specs from WebSocket cache."""
+    products = ws_client.get_products()
+
+    if not products:
+        from api.client import fetch_products as rest_products
+        try:
+            products = rest_products()
+        except Exception:
+            return []
+
+    return [{
+        "symbol": p.get("symbol", ""),
+        "contract_type": p.get("contract_type", ""),
+        "description": p.get("description", ""),
+        "tick_size": p.get("tick_size", ""),
+        "contract_value": p.get("contract_value", ""),
+        "contract_unit_currency": p.get("contract_unit_currency", ""),
+        "maker_rate": p.get("maker_commission_rate", ""),
+        "taker_rate": p.get("taker_commission_rate", ""),
+        "initial_margin": p.get("initial_margin", ""),
+        "maintenance_margin": p.get("maintenance_margin", ""),
+        "position_size_limit": p.get("position_size_limit", ""),
+        "settling_asset": p.get("settling_asset", {}).get("symbol", ""),
+        "state": p.get("state", ""),
+    } for p in products if p.get("state") == "live"]
 
 
 @router.put("/trades/{trade_id}")
@@ -797,4 +949,251 @@ def get_orderbook(symbol: str):
             "buy": bids,
             "sell": asks
         }
+
+
+@router.get("/ohlc")
+def get_ohlc(symbol: str, resolution: str = "1h", start: int = 0, end: int = 0):
+    """Fetch historical OHLC candles for charting trade entries/exits."""
+    try:
+        candles = fetch_ohlc(symbol, resolution, start, end)
+        return [{
+            "timestamp": c.get("timestamp", 0),
+            "open": float(c.get("open", 0)),
+            "high": float(c.get("high", 0)),
+            "low": float(c.get("low", 0)),
+            "close": float(c.get("close", 0)),
+            "volume": float(c.get("volume", 0)),
+        } for c in candles]
+    except Exception as e:
+        print(f"Warning: OHLC fetch failed for {symbol}: {e}")
+        return []
+
+
+@router.post("/analyze-trade/{trade_id}")
+def post_analyze_trade(trade_id: int, session: Session = Depends(get_session)):
+    """Analyze a trade using Gemini AI."""
+    trade = session.get(Trade, trade_id)
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    try:
+        return analyze_trade(trade.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"AI analysis failed for trade {trade_id}: {e}")
+        return {"error": "Analysis failed. Check GEMINI_API_KEY."}
+
+
+@router.get("/benchmark")
+def get_benchmark(symbol: str = "BTC", start_date: str = ""):
+    """Fetch benchmark performance (% change from start) using CoinGecko."""
+    try:
+        from datetime import datetime, timezone
+        if start_date:
+            start_ts = int(datetime.strptime(start_date, "%Y-%m-%d").timestamp())
+        else:
+            start_ts = int(datetime.now(timezone.utc).timestamp()) - 90 * 86400
+        return fetch_benchmark(symbol, start_ts)
+    except Exception as e:
+        print(f"Benchmark fetch failed for {symbol}: {e}")
+        return []
+
+
+@router.post("/import/csv")
+async def post_import_csv(file: UploadFile = File(...), session: Session = Depends(get_session)):
+    """Import trades from a CSV file. Supports Delta Exchange and generic formats."""
+    import csv
+    import io
+
+    if not file.filename or not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv files supported")
+
+    content = await file.read()
+    text = content.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text))
+
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="Empty CSV file")
+
+    fieldnames = [f.strip().lower() for f in reader.fieldnames]
+    col_map = _infer_csv_columns(fieldnames)
+
+    new_fills = 0
+    errors = []
+
+    for i, row in enumerate(reader):
+        try:
+            raw = {k.strip().lower(): v.strip() for k, v in row.items()}
+            ts = _parse_csv_timestamp(raw.get(col_map.get("timestamp", ""), ""))
+            symbol = raw.get(col_map.get("symbol", ""), "").upper()
+            side = raw.get(col_map.get("side", ""), "").lower()
+            price = float(raw.get(col_map.get("price", ""), 0))
+            size = float(raw.get(col_map.get("size", ""), 0))
+            fee = float(raw.get(col_map.get("fee", ""), 0))
+            notional = abs(price * size)
+            exchange_id = raw.get(col_map.get("trade_id", ""), "") or f"csv_{i}_{ts.timestamp()}"
+
+            if not symbol or not side or price <= 0 or size <= 0:
+                errors.append(f"Row {i + 2}: missing required fields")
+                continue
+
+            existing = session.exec(
+                select(Fill).where(Fill.exchange_fill_id == exchange_id)
+            ).first()
+            if existing:
+                continue
+
+            fill = Fill(
+                exchange_fill_id=exchange_id,
+                symbol=symbol,
+                side=side,
+                price=price,
+                size=size,
+                fee=fee,
+                notional=notional,
+                timestamp=ts,
+                order_id=raw.get(col_map.get("order_id", ""), ""),
+            )
+            session.add(fill)
+            new_fills += 1
+        except Exception as e:
+            errors.append(f"Row {i + 2}: {str(e)}")
+
+    session.commit()
+
+    if new_fills > 0:
+        from api.sync import reconstruct_trades_from_db
+        reconstruct_trades_from_db(session)
+
+    return {
+        "imported": new_fills,
+        "errors": errors[:10],
+        "total_errors": len(errors),
+    }
+
+
+@router.get("/export/trades")
+def export_trades_csv(session: Session = Depends(get_session)):
+    """Export all trades as a CSV file."""
+    import csv
+    import io
+
+    trades = session.exec(select(Trade).order_by(Trade.exit_time.asc())).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "id", "symbol", "direction", "entry_time", "exit_time",
+        "avg_entry", "avg_exit", "size", "gross_profit", "fees",
+        "net_profit", "result", "holding_minutes", "strategy",
+        "is_winner", "entry_notional", "exit_notional",
+    ])
+    for t in trades:
+        writer.writerow([
+            t.id, t.symbol, t.direction,
+            t.entry_time.isoformat() if t.entry_time else "",
+            t.exit_time.isoformat() if t.exit_time else "",
+            t.avg_entry, t.avg_exit, t.size,
+            round(t.gross_profit, 4) if t.gross_profit else 0,
+            round(t.fees, 4) if t.fees else 0,
+            round(t.net_profit, 4) if t.net_profit else 0,
+            t.result,
+            round(t.holding_minutes, 0) if t.holding_minutes else 0,
+            t.strategy or "",
+            t.is_winner,
+            round(t.entry_notional, 4) if t.entry_notional else 0,
+            round(t.exit_notional, 4) if t.exit_notional else 0,
+        ])
+
+    from starlette.responses import StreamingResponse
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=delta_journal_trades.csv"},
+    )
+
+
+@router.get("/export/monthly")
+def export_monthly_csv(session: Session = Depends(get_session)):
+    """Export monthly P&L summary as CSV."""
+    import csv
+    import io
+    from collections import defaultdict
+
+    trades = session.exec(select(Trade).where(Trade.is_open == False).order_by(Trade.exit_time.asc())).all()
+    monthly: dict[str, dict] = defaultdict(lambda: {"trades": 0, "wins": 0, "gross": 0, "fees": 0, "net": 0})
+
+    for t in trades:
+        key = t.exit_time.strftime("%Y-%m")
+        m = monthly[key]
+        m["trades"] += 1
+        if t.is_winner:
+            m["wins"] += 1
+        m["gross"] += t.gross_profit or 0
+        m["fees"] += t.fees or 0
+        m["net"] += t.net_profit or 0
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["month", "trades", "wins", "losses", "win_rate", "gross_pnl", "fees", "net_pnl"])
+    for month in sorted(monthly.keys()):
+        m = monthly[month]
+        losses = m["trades"] - m["wins"]
+        wr = round(m["wins"] / m["trades"] * 100, 1) if m["trades"] else 0
+        writer.writerow([month, m["trades"], m["wins"], losses, f"{wr}%", round(m["gross"], 2), round(m["fees"], 2), round(m["net"], 2)])
+
+    from starlette.responses import StreamingResponse
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=delta_journal_monthly.csv"},
+    )
+
+
+def _infer_csv_columns(fieldnames: list[str]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    patterns = {
+        "timestamp": ["timestamp", "time", "date", "created_at", "datetime", "exit_time", "entry_time", "transacttime"],
+        "symbol": ["symbol", "product", "asset", "pair", "instrument", "product_symbol", "base_asset"],
+        "side": ["side", "direction", "type", "order_side", "buysell", "trade_direction"],
+        "price": ["price", "avg_price", "fill_price", "execution_price", "strike_price", "exec_price"],
+        "size": ["size", "quantity", "qty", "amount", "volume", "filled_qty", "executed_qty", "executed", "contracts"],
+        "fee": ["fee", "commission", "fees", "taker_fee", "maker_fee", "paid_commission", "commission_amount"],
+        "trade_id": ["trade_id", "fill_id", "tradeid", "execid", "execution_id", "id", "uuid"],
+        "order_id": ["order_id", "orderid", "clordid", "client_order_id"],
+    }
+    for target, candidates in patterns.items():
+        for c in candidates:
+            if c in fieldnames:
+                mapping[target] = c
+                break
+    return mapping
+
+
+def _parse_csv_timestamp(raw: str):
+    from datetime import datetime, timezone
+    import re
+    raw = raw.strip()
+    try:
+        ts = float(raw)
+        if ts > 1e14:
+            return datetime.fromtimestamp(ts / 1_000_000, tz=timezone.utc)
+        elif ts > 1e11:
+            return datetime.fromtimestamp(ts / 1_000, tz=timezone.utc)
+        else:
+            return datetime.fromtimestamp(ts, tz=timezone.utc)
+    except ValueError:
+        pass
+    for fmt in [
+        "%Y-%m-%dT%H:%M:%S.%fZ",
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%m/%d/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M:%S",
+    ]:
+        try:
+            return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return datetime.now(timezone.utc)
 

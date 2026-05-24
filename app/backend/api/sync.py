@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Literal
 from pydantic import BaseModel
 from sqlmodel import Session, select, text
-from api.models import Trade, Fill, TradeEvent, APIFill, Transaction
-from api.client import fetch_fills, fetch_transactions, parse_delta_timestamp
+from api.models import Trade, Fill, TradeEvent, APIFill
+from api.client import fetch_fills, fetch_order_history
 from api.config import config
 
 class SyncState(BaseModel):
@@ -178,37 +178,15 @@ def run_sync(session: Session):
                 new_fills_count += 1
                 
         session.commit()
-        
-        # 2. Fetch Wallet Transactions (Funding, Fees, etc)
-        try:
-            raw_txs = fetch_transactions()
-            new_tx_count = 0
-            for rt in raw_txs:
-                tx_id = str(rt.get("uuid") or rt.get("id") or "")
-                if not tx_id:
-                    continue
-                existing = session.exec(select(Transaction).where(Transaction.exchange_transaction_id == tx_id)).first()
-                if not existing:
-                    ts = parse_delta_timestamp(rt.get("created_at"))
-                    
-                    import json
-                    tx = Transaction(
-                        exchange_transaction_id=tx_id,
-                        asset_id=int(rt.get("asset_id", 0)),
-                        asset_symbol=rt.get("asset_symbol", "USD"),
-                        amount=float(rt.get("amount", 0)),
-                        type=rt.get("transaction_type") or rt.get("type") or "unknown",
-                        timestamp=ts,
-                        method=rt.get("method", ""),
-                        meta_data=json.dumps(rt.get("meta_data", {}))
-                    )
-                    session.add(tx)
-                    new_tx_count += 1
-            session.commit()
-            print(f"DEBUG: Synced {new_tx_count} new wallet transactions.")
-        except Exception as tx_err:
-            print(f"WARNING: Wallet transaction sync failed: {tx_err}")
 
+        # Sync order history for cancelled/closed orders data
+        try:
+            raw_orders = fetch_order_history()
+            if raw_orders:
+                print(f"DEBUG: Synced {len(raw_orders)} historical orders.")
+        except Exception as oh_err:
+            print(f"WARNING: Order history sync failed: {oh_err}")
+        
         reconstruct_trades_from_db(session)
         
         # Check for large P&L trades to trigger webhooks

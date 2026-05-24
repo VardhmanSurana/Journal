@@ -1,4 +1,12 @@
 services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+
   backend:
     build:
       context: ./app/backend
@@ -13,6 +21,9 @@ services:
     environment:
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
+    depends_on:
+      ollama:
+        condition: service_started
     restart: unless-stopped
 
   frontend:
@@ -29,3 +40,4 @@ services:
 
 volumes:
   journal-data:
+  ollama-data:

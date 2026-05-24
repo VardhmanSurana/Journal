@@ -31,25 +31,39 @@ export const FeesFunding = ({ theme }: { theme: 'light' | 'dark' }) => {
   
   const [data, setData] = useState<FeesFundingData | null>(null)
   const [optimization, setOptimization] = useState<any>(null)
+  const [fundingRates, setFundingRates] = useState<any[]>([])
+  const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | 'all'>('30d')
 
   useEffect(() => {
+    let cancelled = false
     const fetchData = async () => {
       try {
-        const [econRes, optRes] = await Promise.all([
+        const [econRes, optRes, ratesRes, prodRes] = await Promise.allSettled([
           axios.get(`${API_BASE}/economics`),
-          axios.get(`${API_BASE}/economics/optimization`)
+          axios.get(`${API_BASE}/economics/optimization`),
+          axios.get(`${API_BASE}/funding-rates`),
+          axios.get(`${API_BASE}/products/enriched`),
         ])
-        setData(econRes.data)
-        setOptimization(optRes.data)
+        if (cancelled) return
+        if (econRes.status === 'fulfilled') setData(econRes.value.data)
+        else console.error('Economics fetch failed:', econRes.reason)
+        if (optRes.status === 'fulfilled') setOptimization(optRes.value.data)
+        else console.error('Optimization fetch failed:', optRes.reason)
+        if (ratesRes.status === 'fulfilled') setFundingRates(ratesRes.value.data)
+        else console.error('Funding rates fetch failed:', ratesRes.reason)
+        if (prodRes.status === 'fulfilled') setProducts(prodRes.value.data)
+        else console.error('Products fetch failed:', prodRes.reason)
       } catch (err) {
-        console.error('Error fetching fees & funding data:', err)
+        console.error('Unexpected error in fees & funding fetch:', err)
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
     fetchData()
+    const interval = setInterval(fetchData, 30000)
+    return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
   const filteredHistory = useMemo(() => {
@@ -230,6 +244,66 @@ export const FeesFunding = ({ theme }: { theme: 'light' | 'dark' }) => {
         </div>
       </div>
 
+      {/* Live Funding Rates */}
+      {fundingRates.length > 0 && (
+        <div className={`${bgClass} p-6 rounded-xl border space-y-4`}>
+          <div className="flex items-center gap-2 mb-2">
+            <Clock size={20} className="text-blue-400" />
+            <h3 className={`text-lg font-bold ${textClass}`}>Live Funding Rate Predictions</h3>
+            <span className={`ml-auto text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+              Next payment in ~8h
+            </span>
+          </div>
+          <div className="overflow-x-auto rounded-xl border border-zinc-800/40">
+            <table className="w-full text-left text-xs">
+              <thead className={`${theme === 'dark' ? 'bg-zinc-900 text-zinc-400' : 'bg-zinc-100 text-zinc-600'} font-bold uppercase text-[10px] tracking-wider border-b border-zinc-800/20`}>
+                <tr>
+                  <th className="p-3">Symbol</th>
+                  <th className="p-3 text-right">Rate</th>
+                  <th className="p-3 text-right">Annualized</th>
+                  <th className="p-3 text-right">Cost per 1k USD/8h</th>
+                  <th className="p-3 text-right">Prediction</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-850/10 font-mono">
+                {fundingRates.filter(r => r.funding_rate !== 0).map((rate: any) => {
+                  const costPer1k = rate.funding_rate * 1000
+                  return (
+                    <tr key={rate.symbol} className={`${theme === 'dark' ? 'hover:bg-zinc-900/40' : 'hover:bg-zinc-50/50'} transition-colors`}>
+                      <td className="p-3 font-bold">{rate.symbol}</td>
+                      <td className={`p-3 text-right ${rate.funding_rate > 0 ? 'text-red-400' : rate.funding_rate < 0 ? 'text-emerald-400' : ''}`}>
+                        {(rate.funding_rate * 100).toFixed(4)}%
+                      </td>
+                      <td className={`p-3 text-right font-bold ${rate.annualized_pct > 0 ? 'text-red-400' : rate.annualized_pct < 0 ? 'text-emerald-400' : ''}`}>
+                        {rate.annualized_pct > 0 ? '+' : ''}{rate.annualized_pct.toFixed(2)}%
+                      </td>
+                      <td className={`p-3 text-right ${costPer1k > 0 ? 'text-red-400' : costPer1k < 0 ? 'text-emerald-400' : ''}`}>
+                        {costPer1k > 0 ? '-' : '+'}{format(Math.abs(costPer1k))}
+                      </td>
+                      <td className="p-3 text-right">
+                        <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                          rate.annualized_pct > 20
+                            ? 'bg-red-500/10 text-red-400'
+                            : rate.annualized_pct > 5
+                              ? 'bg-amber-500/10 text-amber-400'
+                              : 'bg-emerald-500/10 text-emerald-400'
+                        }`}>
+                          {rate.annualized_pct > 20 ? 'HIGH' : rate.annualized_pct > 5 ? 'MODERATE' : 'LOW'}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className={`text-[10px] italic ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+            Funding payments occur every 8h (05:30, 13:30, 21:30 IST). Positive rate = longs pay shorts. 
+            Cost shown is estimated per $1,000 position per 8h interval.
+          </p>
+        </div>
+      )}
+
       {/* Funding & Fee Optimization Section (Feature 3) */}
       {optimization && (
         <div className={`${bgClass} p-6 rounded-xl border space-y-6`}>
@@ -311,6 +385,60 @@ export const FeesFunding = ({ theme }: { theme: 'light' | 'dark' }) => {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Product Catalog Enrichment */}
+      {products.length > 0 && (
+        <div className={`${bgClass} p-6 rounded-xl border space-y-4`}>
+          <div className="flex items-center gap-2 mb-2">
+            <PieChart size={20} className="text-purple-400" />
+            <h3 className={`text-lg font-bold ${textClass}`}>Product Catalog & Contract Specs</h3>
+          </div>
+          <div className="overflow-x-auto rounded-xl border border-zinc-800/40">
+            <table className="w-full text-left text-xs">
+              <thead className={`${theme === 'dark' ? 'bg-zinc-900 text-zinc-400' : 'bg-zinc-100 text-zinc-600'} font-bold uppercase text-[10px] tracking-wider border-b border-zinc-800/20`}>
+                <tr>
+                  <th className="p-3">Symbol</th>
+                  <th className="p-3">Type</th>
+                  <th className="p-3 text-right">Tick Size</th>
+                  <th className="p-3 text-right">Contract Value</th>
+                  <th className="p-3 text-right">Initial Margin</th>
+                  <th className="p-3 text-right">Taker Fee</th>
+                  <th className="p-3 text-right">Maker Fee</th>
+                  <th className="p-3 text-right">Position Limit</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-850/10 font-mono">
+                {products.slice(0, 50).map((p: any) => (
+                  <tr key={p.symbol} className={`${theme === 'dark' ? 'hover:bg-zinc-900/40' : 'hover:bg-zinc-50/50'} transition-colors`}>
+                    <td className="p-3 font-bold">{p.symbol}</td>
+                    <td className="p-3">
+                      <span className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${
+                        p.contract_type === 'perpetual_futures'
+                          ? 'bg-blue-500/10 text-blue-400'
+                          : p.contract_type === 'call_options'
+                            ? 'bg-emerald-500/10 text-emerald-400'
+                            : 'bg-orange-500/10 text-orange-400'
+                      }`}>
+                        {p.contract_type?.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right text-zinc-400">{p.tick_size}</td>
+                    <td className="p-3 text-right">{p.contract_value} {p.contract_unit_currency}</td>
+                    <td className="p-3 text-right">{p.initial_margin}%</td>
+                    <td className="p-3 text-right text-red-400">{(parseFloat(p.taker_rate) * 100).toFixed(3)}%</td>
+                    <td className="p-3 text-right text-emerald-400">{(parseFloat(p.maker_rate) * 100).toFixed(3)}%</td>
+                    <td className="p-3 text-right text-zinc-400">{p.position_size_limit?.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className={`text-[10px] italic ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+            Live product specs from Delta Exchange. Margin rates are percentage of notional value.
+            Maker fees apply to limit orders that don't cross the spread; taker fees for market orders.
+          </p>
         </div>
       )}
 

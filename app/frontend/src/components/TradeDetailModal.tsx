@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
-import { X, TrendingUp, TrendingDown, Calendar, Clock, DollarSign, ArrowRight, Target, BookOpen, Image as ImageIcon } from 'lucide-react'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceDot } from 'recharts'
+import { X, TrendingUp, TrendingDown, Calendar, Clock, DollarSign, ArrowRight, Target, BookOpen, Image as ImageIcon, BarChart3, Sparkles } from 'lucide-react'
 import { useCurrency } from '../hooks/useCurrency'
 import { API_BASE } from '../config/api'
 
@@ -15,6 +16,22 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
   const { format } = useCurrency()
   const [orderbook, setOrderbook] = useState<{ buy: any[]; sell: any[] } | null>(null)
   const [obLoading, setObLoading] = useState(true)
+  const [ohlcData, setOhlcData] = useState<any[]>([])
+  const [ohlcLoading, setOhlcLoading] = useState(true)
+  const [aiAnalysis, setAiAnalysis] = useState<any>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
+
+  const chartResolution = useMemo(() => {
+    const entry = new Date(trade.entry_time).getTime()
+    const exit = trade.exit_time ? new Date(trade.exit_time).getTime() : Date.now()
+    const hours = (exit - entry) / (1000 * 60 * 60)
+    if (hours <= 1) return '1m'
+    if (hours <= 6) return '5m'
+    if (hours <= 48) return '15m'
+    if (hours <= 168) return '1h'
+    return '4h'
+  }, [trade.entry_time, trade.exit_time])
 
   useEffect(() => {
     const fetchOrderbook = async () => {
@@ -29,6 +46,50 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
     }
     fetchOrderbook()
   }, [trade.symbol])
+
+  useEffect(() => {
+    const fetchOhlc = async () => {
+      setOhlcLoading(true)
+      try {
+        const entryTs = new Date(trade.entry_time).getTime()
+        const exitTs = trade.exit_time ? new Date(trade.exit_time).getTime() : Date.now()
+        const padding = (exitTs - entryTs) * 0.3
+        const res = await axios.get(`${API_BASE}/ohlc`, {
+          params: {
+            symbol: trade.symbol,
+            resolution: chartResolution,
+            start: Math.floor((entryTs - padding) / 1000),
+            end: Math.ceil((exitTs + padding) / 1000),
+          }
+        })
+        setOhlcData(res.data || [])
+      } catch (err) {
+        console.error('Error fetching OHLC:', err)
+      } finally {
+        setOhlcLoading(false)
+      }
+    }
+    if (trade.symbol) fetchOhlc()
+  }, [trade.symbol, trade.entry_time, trade.exit_time, chartResolution])
+
+  const fetchAiAnalysis = async () => {
+    setAiLoading(true)
+    setAiError('')
+    try {
+      const res = await axios.post(`${API_BASE}/analyze-trade/${trade.id}`)
+      if (res.data?.error) {
+        setAiError(res.data.error)
+        setAiAnalysis(null)
+      } else {
+        setAiAnalysis(res.data)
+      }
+    } catch {
+      setAiError('AI analysis unavailable')
+      setAiAnalysis(null)
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   if (!trade) return null
 
@@ -415,6 +476,108 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
                 )}
               </div>
 
+              {/* AI Trade Analysis Card */}
+              <div className={`p-6 border rounded-2xl ${
+                theme === 'dark' ? 'bg-zinc-900/30 border-zinc-800/50' : 'bg-zinc-50 border-zinc-200'
+              }`}>
+                <h3 className={`text-xs font-black uppercase tracking-widest mb-4 flex items-center gap-2 ${
+                  theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'
+                }`}>
+                  <Sparkles size={14} /> AI Trade Analysis
+                </h3>
+                {!aiAnalysis && !aiLoading && !aiError && (
+                  <button
+                    onClick={fetchAiAnalysis}
+                    className={`w-full py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-widest transition-all border ${
+                      theme === 'dark'
+                        ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+                        : 'bg-white hover:bg-zinc-100 text-zinc-600 border-zinc-200'
+                    }`}
+                  >
+                    <Sparkles size={14} className="inline mr-2" />Analyze with AI
+                  </button>
+                )}
+                {aiLoading && (
+                  <div className="flex items-center gap-3 py-4">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-zinc-500" />
+                    <span className={`text-xs italic ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                      Analyzing trade patterns...
+                    </span>
+                  </div>
+                )}
+                {aiError && (
+                  <div className="py-3">
+                    <p className={`text-xs italic ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                      {aiError}
+                    </p>
+                    <button
+                      onClick={fetchAiAnalysis}
+                      className={`mt-2 text-[10px] font-black uppercase tracking-widest underline ${
+                        theme === 'dark' ? 'text-zinc-400 hover:text-white' : 'text-zinc-500 hover:text-zinc-900'
+                      }`}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+                {aiAnalysis && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                        Trade Quality
+                      </span>
+                      <span className={`text-lg font-black ${
+                        aiAnalysis.score >= 7 ? 'text-emerald-500' : aiAnalysis.score >= 4 ? 'text-amber-500' : 'text-red-500'
+                      }`}>
+                        {aiAnalysis.score}/10
+                      </span>
+                    </div>
+                    <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-emerald-500/5 border border-emerald-500/10' : 'bg-emerald-50 border border-emerald-200'}`}>
+                      <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-700'}`}>
+                        Strengths
+                      </p>
+                      <p className={`text-xs leading-relaxed ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                        {aiAnalysis.strengths}
+                      </p>
+                    </div>
+                    {aiAnalysis.weaknesses && (
+                      <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-rose-500/5 border border-rose-500/10' : 'bg-rose-50 border border-rose-200'}`}>
+                        <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${theme === 'dark' ? 'text-rose-400' : 'text-rose-700'}`}>
+                          Weaknesses
+                        </p>
+                        <p className={`text-xs leading-relaxed ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                          {aiAnalysis.weaknesses}
+                        </p>
+                      </div>
+                    )}
+                    <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-blue-500/5 border border-blue-500/10' : 'bg-blue-50 border border-blue-200'}`}>
+                      <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-700'}`}>
+                        Pattern
+                      </p>
+                      <p className={`text-xs leading-relaxed ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                        {aiAnalysis.pattern}
+                      </p>
+                    </div>
+                    <div className={`p-3 rounded-xl ${theme === 'dark' ? 'bg-amber-500/5 border border-amber-500/10' : 'bg-amber-50 border border-amber-200'}`}>
+                      <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${theme === 'dark' ? 'text-amber-400' : 'text-amber-700'}`}>
+                        Suggestion
+                      </p>
+                      <p className={`text-xs leading-relaxed ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                        {aiAnalysis.suggestion}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => { setAiAnalysis(null); fetchAiAnalysis() }}
+                      className={`text-[10px] font-black uppercase tracking-widest underline ${
+                        theme === 'dark' ? 'text-zinc-500 hover:text-white' : 'text-zinc-400 hover:text-zinc-900'
+                      }`}
+                    >
+                      Re-analyze
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* Screenshots Card */}
               {trade.screenshots && trade.screenshots.length > 0 && (
                 <div className={`p-6 border rounded-2xl ${
@@ -464,6 +627,126 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Price Chart Section — full width below the 3-column grid */}
+        <div className={`p-6 border-t ${theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'}`}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className={`text-xs font-black uppercase tracking-widest flex items-center gap-2 ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+              <BarChart3 size={14} /> Price Chart — {trade.symbol}
+              <span className={`ml-2 text-[9px] font-mono font-normal uppercase ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                ({chartResolution} candles)
+              </span>
+            </h3>
+          </div>
+          {ohlcLoading ? (
+            <div className="h-[300px] flex items-center justify-center">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-zinc-500" />
+            </div>
+          ) : ohlcData.length === 0 ? (
+            <div className={`h-[200px] flex items-center justify-center text-xs italic ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+              No price data available for this period.
+            </div>
+          ) : (
+            <div className="h-[350px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={ohlcData} margin={{ top: 10, right: 20, left: 20, bottom: 10 }}>
+                  <defs>
+                    <linearGradient id="ohlcGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={trade.net_profit >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.15}/>
+                      <stop offset="95%" stopColor={trade.net_profit >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#27272a' : '#e4e4e7'} vertical={false} opacity={0.3} />
+                  <XAxis 
+                    dataKey="timestamp" 
+                    stroke={theme === 'dark' ? '#52525b' : '#a1a1aa'} 
+                    fontSize={10} 
+                    tickLine={false} 
+                    axisLine={false}
+                    tickFormatter={(ts) => {
+                      const d = new Date(ts * 1000)
+                      return chartResolution === '4h' || chartResolution === '1h'
+                        ? `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${d.toLocaleTimeString([], { hour: '2-digit' })}h`
+                        : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    }}
+                  />
+                  <YAxis 
+                    stroke={theme === 'dark' ? '#52525b' : '#a1a1aa'} 
+                    fontSize={10} 
+                    tickLine={false} 
+                    axisLine={false}
+                    domain={['auto', 'auto']}
+                    tickFormatter={(v) => format(v)}
+                  />
+                  <Tooltip
+                    contentStyle={{ 
+                      backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff', 
+                      border: `1px solid ${theme === 'dark' ? '#27272a' : '#e4e4e7'}`, 
+                      borderRadius: '12px',
+                      fontSize: '12px'
+                    }}
+                    labelFormatter={(ts) => new Date(ts * 1000).toLocaleString()}
+                    formatter={(value: number) => [format(value), 'Price']}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="close" 
+                    stroke={trade.net_profit >= 0 ? '#10b981' : '#ef4444'} 
+                    strokeWidth={2} 
+                    fill="url(#ohlcGradient)" 
+                    dot={false}
+                  />
+                  <ReferenceLine 
+                    x={Math.floor(new Date(trade.entry_time).getTime() / 1000)} 
+                    stroke="#3b82f6" 
+                    strokeWidth={2} 
+                    strokeDasharray="4 4"
+                    label={{
+                      value: 'ENTRY',
+                      position: 'top',
+                      fill: '#3b82f6',
+                      fontSize: 9,
+                      fontWeight: 'bold',
+                    }}
+                  />
+                  <ReferenceDot 
+                    x={Math.floor(new Date(trade.entry_time).getTime() / 1000)} 
+                    y={trade.avg_entry}
+                    r={5}
+                    fill="#3b82f6"
+                    stroke={theme === 'dark' ? '#18181b' : '#ffffff'}
+                    strokeWidth={2}
+                  />
+                  {trade.exit_time && (
+                    <>
+                      <ReferenceLine 
+                        x={Math.floor(new Date(trade.exit_time).getTime() / 1000)} 
+                        stroke={trade.net_profit >= 0 ? '#10b981' : '#ef4444'} 
+                        strokeWidth={2} 
+                        strokeDasharray="4 4"
+                        label={{
+                          value: trade.net_profit >= 0 ? 'EXIT ✓' : 'EXIT ✗',
+                          position: 'top',
+                          fill: trade.net_profit >= 0 ? '#10b981' : '#ef4444',
+                          fontSize: 9,
+                          fontWeight: 'bold',
+                        }}
+                      />
+                      <ReferenceDot 
+                        x={Math.floor(new Date(trade.exit_time).getTime() / 1000)} 
+                        y={trade.avg_exit}
+                        r={5}
+                        fill={trade.net_profit >= 0 ? '#10b981' : '#ef4444'}
+                        stroke={theme === 'dark' ? '#18181b' : '#ffffff'}
+                        strokeWidth={2}
+                      />
+                    </>
+                  )}
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       </div>
     </div>

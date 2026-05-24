@@ -1,9 +1,9 @@
-import { BookOpen, Plus, Save, X, Calendar, Smile, Frown, Meh, Edit2, Trash2 } from 'lucide-react'
+import { BookOpen, Plus, Save, X, Calendar, Smile, Frown, Meh, Edit2, Trash2, Brain, Target, TrendingUp, TrendingDown } from 'lucide-react'
 import axios from 'axios'
 import { useState, useEffect } from 'react'
-import { API_BASE } from '../config/api'
-import { useThemeClasses } from '../utils/theme'
-import { SkeletonLoader } from '../components/SkeletonLoader'
+import { API_BASE } from '../../config/api'
+import { useThemeClasses } from '../../utils/theme'
+import { SkeletonLoader } from '../../components/SkeletonLoader'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface DailyReview {
@@ -59,6 +59,11 @@ export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => 
   const [editingReview, setEditingReview] = useState<Partial<DailyReview> | null>(null)
   const { bgClass, textClass, cardBgClass, subTextClass } = useThemeClasses(theme)
 
+  const journaledTrades = trades.filter(t => t.notes)
+  const sortedJournaledTrades = [...journaledTrades].sort(
+    (a, b) => new Date(b.exit_time).getTime() - new Date(a.exit_time).getTime()
+  )
+
   const fetchReviews = async () => {
     try {
       const res = await axios.get(`${API_BASE}/reviews`)
@@ -72,7 +77,9 @@ export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => 
 
   useEffect(() => {
     fetchReviews()
-  }, [])
+    const interval = setInterval(fetchReviews, 10000)
+    return () => clearInterval(interval)
+  }, [trades])
 
   const handleNewReview = () => {
     setEditingReview({
@@ -184,6 +191,194 @@ export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => 
             </motion.button>
           ))}
         </div>
+      </div>
+
+      {/* Journaled Trade Reflections Section */}
+      <div className="space-y-4 pt-2">
+        <div className="flex items-center justify-between">
+          <h3 className={`text-sm font-black uppercase tracking-widest ${subTextClass}`}>
+            Journaled Trade Reflections
+          </h3>
+          <span className="text-[10px] text-zinc-500">{sortedJournaledTrades.length} entries saved</span>
+        </div>
+        
+        {sortedJournaledTrades.length === 0 ? (
+          <div className={`${bgClass} rounded-xl border p-12 text-center ${
+            theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'
+          }`}>
+            <BookOpen size={40} className={`mx-auto mb-4 ${subTextClass}`} />
+            <p className={`${subTextClass}`}>No trades journaled yet. Select a pending trade above to write your first reflection entry!</p>
+          </div>
+        ) : (
+          <motion.div 
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+            className="space-y-4"
+          >
+            {sortedJournaledTrades.map(trade => (
+              <motion.div 
+                key={trade.id} 
+                variants={itemVariants} 
+                className={`${bgClass} rounded-xl border p-6 space-y-4 ${
+                  theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200 shadow-sm'
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-lg ${cardBgClass}`}>
+                      <Brain size={20} className={theme === 'dark' ? 'text-purple-400' : 'text-purple-700'} />
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`text-lg font-bold ${textClass}`}>{trade.symbol}</span>
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
+                          trade.direction === 'long' 
+                            ? (theme === 'dark' ? 'bg-zinc-800 text-zinc-300' : 'bg-zinc-200 text-zinc-700')
+                            : 'bg-orange-500/10 text-orange-500'
+                        }`}>
+                          {trade.direction}
+                        </span>
+                        {trade.strategy && (
+                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
+                            theme === 'dark' ? 'bg-zinc-900 text-zinc-400 border border-zinc-800' : 'bg-zinc-100 text-zinc-650 shadow-sm'
+                          }`}>
+                            {trade.strategy}
+                          </span>
+                        )}
+                        {trade.session && (
+                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
+                            theme === 'dark' ? 'bg-zinc-900 text-zinc-500 border border-zinc-850' : 'bg-zinc-50 text-zinc-500 border border-zinc-200 shadow-sm'
+                          }`}>
+                            {trade.session} SESSION
+                          </span>
+                        )}
+                      </div>
+                      <div className={`text-xs ${subTextClass} mt-1`}>
+                        Closed · {new Date(trade.exit_time).toLocaleDateString('en-US', { 
+                          weekday: 'long', 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <div className="text-xs text-zinc-500">Net Return</div>
+                      <div className={`text-xl font-bold flex items-center gap-1 ${trade.net_profit >= 0 ? 'winner' : 'loser'}`}>
+                        {trade.net_profit >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                        ${Math.abs(trade.net_profit).toFixed(2)}
+                      </div>
+                    </div>
+                    
+                    <button 
+                      onClick={() => onReview(trade)}
+                      className={`p-2 rounded-lg ${cardBgClass} transition-colors ${theme === 'dark' ? 'hover:bg-zinc-700 text-zinc-400' : 'hover:bg-zinc-200 text-zinc-600 shadow-sm'}`}
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+                  {/* Plans & Notes */}
+                  <div className="md:col-span-2 space-y-4">
+                    {trade.pre_plan && (
+                      <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-zinc-900/40' : 'bg-zinc-50'}`}>
+                        <div className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-1 flex items-center gap-1">
+                          <Target size={12} className="text-purple-500" /> Pre-Trade Plan
+                        </div>
+                        <p className={`text-xs italic leading-relaxed ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-600'}`}>
+                          "{trade.pre_plan}"
+                        </p>
+                      </div>
+                    )}
+                    
+                    <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-zinc-900/20' : 'bg-zinc-100/50'}`}>
+                      <div className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-2 flex items-center gap-1">
+                        <BookOpen size={12} className="text-emerald-500" /> Post-Trade Notes
+                      </div>
+                      <p className={`text-xs whitespace-pre-wrap leading-relaxed ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-600'}`}>
+                        {trade.notes}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Mindset, Emotions & Score gauges */}
+                  <div className={`p-4 rounded-lg space-y-4 ${theme === 'dark' ? 'bg-zinc-900/30' : 'bg-zinc-50/50'}`}>
+                    <div className="grid grid-cols-2 gap-4">
+                      {trade.emotion && (
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-1">Emotion</div>
+                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                            theme === 'dark' ? 'bg-purple-500/10 text-purple-400' : 'bg-purple-50 text-purple-700'
+                          }`}>
+                            {trade.emotion}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {trade.discipline_score !== null && (
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-1">Discipline</div>
+                          <span className={`text-xs font-bold ${
+                            trade.discipline_score >= 8 
+                              ? 'text-emerald-500 font-bold' 
+                              : trade.discipline_score >= 5 
+                                ? 'text-blue-500 font-bold' 
+                                : 'text-rose-500 font-bold'
+                          }`}>
+                            {trade.discipline_score}/10
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {trade.mistakes && (
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-wider text-rose-500 mb-1.5">Mistakes</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {trade.mistakes.split(',').map((m: string) => (
+                            <span key={m} className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${
+                              theme === 'dark' 
+                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/10' 
+                                : 'bg-rose-50 text-rose-700 border border-rose-100'
+                            }`}>
+                              {m.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Screenshot Thumbnails if present */}
+                {trade.screenshots && trade.screenshots.length > 0 && (
+                  <div className="flex gap-2 overflow-x-auto py-1">
+                    {trade.screenshots.map((s: any) => {
+                      const imageUrl = s.image_path.startsWith('http') ? s.image_path : `${API_BASE.replace('/api', '')}${s.image_path}`
+                      return (
+                        <a 
+                          key={s.id} 
+                          href={imageUrl} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="w-24 aspect-video rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-550 transition-all flex-shrink-0"
+                        >
+                          <img src={imageUrl} alt="chart" className="w-full h-full object-cover" />
+                        </a>
+                      )
+                    })}
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
       </div>
 
       <AnimatePresence>
@@ -330,12 +525,12 @@ export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => 
         animate="show"
         className="space-y-4"
       >
-        {reviews.length === 0 ? (
-          <div className={`${bgClass} rounded-xl border p-12 text-center`}>
-            <BookOpen size={48} className={`mx-auto mb-4 ${subTextClass}`} />
-            <p className={`${subTextClass}`}>No daily reviews yet. Start journaling to track your progress!</p>
-          </div>
-        ) : (
+{reviews.length === 0 ? (
+  <div className={`${bgClass} rounded-xl border p-12 text-center`}>
+    <BookOpen size={48} className={`mx-auto mb-4 ${subTextClass}`} />
+    <p className={`${subTextClass}`}></p>
+  </div>
+) : (
           reviews.map(review => {
             const moodData = getMoodData(review.mood)
             const MoodIcon = moodData.icon

@@ -1,0 +1,88 @@
+/* ==========================================
+   Delta Journal - Premium Refined Glassmorphism
+   Light Mode Design Tokens & Styles
+   ========================================== */
+
+.light {
+  color-scheme: light;
+  color: #18181b; /* Zinc 900 */
+  background-color: #f4f4f5; /* Zinc 100 base */
+}
+
+/* --- Level 1 Glassmorphic Containers --- */
+.light .card {
+  background-color: rgba(255, 255, 255, 0.75) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(228, 228, 231, 0.8) !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.03), 0 8px 10px -6px rgba(0, 0, 0, 0.03) !important;
+  border-radius: 12px;
+}
+
+.light .stat-card {
+  background-color: rgba(255, 255, 255, 0.75) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(228, 228, 231, 0.8) !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.01) !important;
+  border-radius: 12px;
+}
+
+/* --- Typography Colors --- */
+.light td {
+  color: #27272a !important; /* Zinc 800 */
+}
+
+/* --- High-Contrast Financial Indicator Badges --- */
+.light .winner {
+  color: #10b981 !important; /* Vibrant Emerald 500 */
+}
+
+.light .loser {
+  color: #ef4444 !important; /* Red 500 */
+}
+
+.light .badge-win {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+  border: 1px solid rgba(16, 185, 129, 0.2) !important;
+  color: #047857 !important; /* Deep Emerald 700 */
+}
+
+.light .badge-loss {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+  border: 1px solid rgba(239, 68, 68, 0.2) !important;
+  color: #b91c1c !important; /* Deep Red 700 */
+}
+
+/* --- Interactive Elements & Form Controls --- */
+.light input, 
+.light select, 
+.light textarea {
+  background-color: rgba(255, 255, 255, 0.85) !important;
+  border: 1px solid #e4e4e7 !important;
+  color: #18181b !important;
+  border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.light input:focus, 
+.light select:focus, 
+.light textarea:focus {
+  border-color: #10b981 !important; /* Accent emerald focus border */
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12) !important;
+  outline: none;
+}
+
+/* --- Custom Scrollbar styling --- */
+.light ::-webkit-scrollbar-track {
+  background: #f4f4f5;
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 4px;
+}
+
+.light ::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa;
+}

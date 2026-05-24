@@ -1,0 +1,56 @@
+/* Dark Mode Theme */
+.dark {
+  color-scheme: dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #09090b; /* Zinc 950 */
+}
+
+.dark .card {
+  background-color: #18181b; /* Zinc 900 */
+  border: 1px solid #27272a; /* Zinc 800 */
+}
+
+.dark .stat-card {
+  background-color: #18181b;
+  border: 1px solid #27272a;
+}
+
+/* Dynamic green/red for Dark Mode */
+.dark .winner { 
+  color: #10b981 !important; /* Vibrant Emerald 500 for Dark mode */
+} 
+
+.dark .loser { 
+  color: #ef4444 !important; /* Red 500 for Dark mode */
+}
+
+/* Custom scrollbar for Dark Mode */
+.dark ::-webkit-scrollbar-track {
+  background: #18181b;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+
+/* Inputs, Selects, Textareas for Dark Mode */
+.dark input, .dark select, .dark textarea {
+  background-color: #18181b !important;
+  border-color: #27272a !important;
+  color: #fafafa !important;
+}
+
+.dark input:focus, .dark select:focus, .dark textarea:focus {
+  border-color: #52525b !important;
+  outline: none;
+}
+
+/* Tables for Dark Mode */
+.dark td {
+  color: #d4d4d8 !important; /* Zinc 300 */
+}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Shield, ShieldAlert, ShieldCheck, Activity, Database, AlertCircle, RefreshCw, Zap } from 'lucide-react';
-import { API_BASE } from '../config/api';
+import { API_BASE } from '../../config/api';
 
 interface SafetyStats {
   api_count: number;

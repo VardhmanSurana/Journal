@@ -1,24 +1,13 @@
 @import "tailwindcss";
 
+@import "./dark.css";
+@import "./light.css";
+
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-/* Dark Mode Theme */
-.dark {
-  color-scheme: dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #09090b; /* Zinc 950 */
-}
-
-/* Light Mode Theme */
-.light {
-  color-scheme: light;
-  color: #18181b; /* Zinc 900 */
-  background-color: #f4f4f5; /* Zinc 100 */
 }
 
 body {
@@ -34,33 +23,12 @@ body {
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
-.dark .card {
-  background-color: #18181b; /* Zinc 900 */
-  border: 1px solid #27272a; /* Zinc 800 */
-}
-
-.light .card {
-  background-color: #ffffff;
-  border: 1px solid #e4e4e7;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.01);
-}
-
 .stat-card {
   display: flex;
   align-items: center;
   gap: 1rem;
   padding: 1.25rem;
   border-radius: 12px;
-}
-
-.dark .stat-card {
-  background-color: #18181b;
-  border: 1px solid #27272a;
-}
-
-.light .stat-card {
-  background-color: #ffffff;
-  border: 1px solid #e4e4e7;
 }
 
 .stat-icon {
@@ -88,13 +56,6 @@ body {
   font-weight: 700;
 }
 
-/* Dynamic green/red for Dark vs Light Mode */
-.dark .winner { color: #10b981 !important; } /* Vibrant Emerald 500 for Dark mode */
-.light .winner { color: #047857 !important; } /* Deep Emerald 700 for high-contrast Light mode */
-
-.dark .loser { color: #ef4444 !important; }  /* Red 500 for Dark mode */
-.light .loser { color: #b91c1c !important; }  /* Deep Red 700 for high-contrast Light mode */
-
 .btn {
   border-radius: 8px;
   font-weight: 600;
@@ -111,32 +72,6 @@ body {
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
-}
-
-.dark ::-webkit-scrollbar-track {
-  background: #18181b;
-}
-
-.light ::-webkit-scrollbar-track {
-  background: #f4f4f5;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
-  border-radius: 4px;
-}
-
-.light ::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
-  border-radius: 4px;
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
-}
-
-.light ::-webkit-scrollbar-thumb:hover {
-  background: #a1a1aa;
 }
 
 /* Better red/green classes */
@@ -174,37 +109,7 @@ input, select, textarea {
   transition: all 0.2s ease;
 }
 
-.dark input, .dark select, .dark textarea {
-  background-color: #18181b !important;
-  border-color: #27272a !important;
-  color: #fafafa !important;
-}
-
-.light input, .light select, .light textarea {
-  background-color: #ffffff !important;
-  border-color: #e4e4e7 !important;
-  color: #18181b !important;
-}
-
-.dark input:focus, .dark select:focus, .dark textarea:focus {
-  border-color: #52525b !important;
-  outline: none;
-}
-
-.light input:focus, .light select:focus, .light textarea:focus {
-  border-color: #a1a1aa !important;
-  outline: none;
-}
-
 /* Tables */
 th {
   color: #a1a1aa !important;
-}
-
-.dark td {
-  color: #d4d4d8 !important; /* Zinc 300 */
-}
-
-.light td {
-  color: #27272a !important; /* Zinc 800 */
 }

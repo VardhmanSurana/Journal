@@ -209,143 +209,6 @@ def get_positions():
     return result
 
 
-@router.get("/risk")
-def get_risk_metrics(session: Session = Depends(get_session)):
-    """Get comprehensive risk metrics."""
-    from api.client import DeltaAPIError
-    trades = session.exec(select(Trade).where(Trade.is_open == False).order_by(Trade.exit_time.asc())).all()
-    
-    positions_data = []
-    wallet_data = []
-    tickers = []
-    
-    try:
-        positions_data = fetch_positions()
-    except (DeltaAPIError, Exception) as e:
-        print(f"Warning: Risk positions fetch failed: {e}")
-        
-    try:
-        wallet_data = fetch_wallet_balance()
-    except (DeltaAPIError, Exception) as e:
-        print(f"Warning: Risk wallet fetch failed: {e}")
-        
-    try:
-        tickers = fetch_tickers()
-    except (DeltaAPIError, Exception) as e:
-        print(f"Warning: Risk tickers fetch failed: {e}")
-    
-    if not trades:
-        return {
-            "sharpe_ratio": 0,
-            "sortino_ratio": 0,
-            "calmar_ratio": 0,
-            "win_loss_streak": 0,
-            "max_consecutive_wins": 0,
-            "max_consecutive_losses": 0,
-            "win_loss_distribution": [],
-            "portfolio_exposure": [],
-            "margin_utilization": 0,
-            "total_equity": 0,
-        }
-    
-    # Calculate equity for risk-free rate (assume 5% annual)
-    returns = [t.net_profit for t in trades]
-    avg_return = sum(returns) / len(returns) if returns else 0
-    std_dev = (sum((r - avg_return) ** 2 for r in returns) / len(returns)) ** 0.5 if returns else 1
-    
-    # Sharpe Ratio (annualized, 252 trading days)
-    risk_free_rate = 0.05 / 252
-    sharpe_ratio = ((avg_return - risk_free_rate) / std_dev * (252 ** 0.5)) if std_dev > 0 else 0
-    
-    # Sortino Ratio (downside deviation only)
-    negative_returns = [r for r in returns if r < 0]
-    downside_dev = (sum(r ** 2 for r in negative_returns) / len(returns)) ** 0.5 if negative_returns else 1
-    sortino_ratio = ((avg_return - risk_free_rate) / downside_dev * (252 ** 0.5)) if downside_dev > 0 else 0
-    
-    # Calmar Ratio (max drawdown / annual return)
-    cumulative = 0
-    peak = 0
-    max_dd = 0
-    for r in returns:
-        cumulative += r
-        if cumulative > peak:
-            peak = cumulative
-        dd = peak - cumulative
-        if dd > max_dd:
-            max_dd = dd
-    
-    annual_return = avg_return * 252
-    calmar_ratio = annual_return / max_dd if max_dd > 0 else 0
-    
-    # Win/Loss Streaks
-    max_wins = 0
-    max_losses = 0
-    current_wins = 0
-    current_losses = 0
-    for t in trades:
-        if t.is_winner:
-            current_wins += 1
-            current_losses = 0
-            if current_wins > max_wins:
-                max_wins = current_wins
-        else:
-            current_losses += 1
-            current_wins = 0
-            if current_losses > max_losses:
-                max_losses = current_losses
-    
-    # Win/Loss Distribution (histogram buckets)
-    buckets = [
-        {"range": "<-$500", "count": 0},
-        {"range": "-$500 to -$100", "count": 0},
-        {"range": "-$100 to $0", "count": 0},
-        {"range": "$0 to $100", "count": 0},
-        {"range": "$100 to $500", "count": 0},
-        {"range": ">$500", "count": 0},
-    ]
-    for t in trades:
-        pnl = t.net_profit
-        if pnl < -500:
-            buckets[0]["count"] += 1
-        elif pnl < -100:
-            buckets[1]["count"] += 1
-        elif pnl < 0:
-            buckets[2]["count"] += 1
-        elif pnl < 100:
-            buckets[3]["count"] += 1
-        elif pnl < 500:
-            buckets[4]["count"] += 1
-        else:
-            buckets[5]["count"] += 1
-    
-    # Portfolio exposure by symbol
-    exposure = {}
-    for pos in positions_data:
-        symbol = pos.get("product_symbol", "UNKNOWN")
-        size = abs(pos.get("size", 0))
-        notional = pos.get("notional", 0)
-        exposure[symbol] = exposure.get(symbol, 0) + notional
-    
-    # Margin utilization
-    total_equity = sum(float(w.get("balance", 0)) for w in wallet_data)
-    total_margin = sum(float(p.get("margin_used", 0)) for p in positions_data)
-    margin_util = (total_margin / total_equity * 100) if total_equity > 0 else 0
-    
-    return {
-        "sharpe_ratio": round(sharpe_ratio, 2),
-        "sortino_ratio": round(sortino_ratio, 2),
-        "calmar_ratio": round(calmar_ratio, 2),
-        "max_drawdown": round(max_dd, 2),
-        "annual_return_pct": round(annual_return / total_equity * 100 if total_equity else 0, 2),
-        "win_loss_streak": current_wins if current_wins > current_losses else -current_losses,
-        "max_consecutive_wins": max_wins,
-        "max_consecutive_losses": max_losses,
-        "win_loss_distribution": buckets,
-        "portfolio_exposure": [{"symbol": k, "notional": round(v, 2)} for k, v in exposure.items()],
-        "margin_utilization": round(margin_util, 2),
-        "total_equity": round(total_equity, 2),
-    }
-
 
 @router.put("/trades/{trade_id}")
 def update_trade(trade_id: int, updates: TradeUpdateRequest, session: Session = Depends(get_session)):
@@ -502,7 +365,7 @@ def get_connection_health():
 
 
 
-@router.get("/data/reconcile")
+@router.get("/reviews")
 def get_daily_reviews(session: Session = Depends(get_session)):
     """Get all daily reviews."""
     reviews = session.exec(select(DailyReview).order_by(DailyReview.date_str.desc())).all()
@@ -517,6 +380,48 @@ def get_daily_reviews(session: Session = Depends(get_session)):
         }
         for r in reviews
     ]
+
+
+@router.get("/data/reconcile")
+def reconcile_data(session: Session = Depends(get_session)):
+    """Verify local trade history matches Delta Exchange records for sync confidence."""
+    from api.client import fetch_fills
+    from api.models import Fill
+
+    local_fills = session.exec(select(Fill)).all()
+    local_count = len(local_fills)
+    
+    api_count = local_count
+    status = "HEALTHY"
+    quality_score = 100
+    difference = 0
+    
+    try:
+        api_fills = fetch_fills()
+        api_count = len(api_fills)
+        difference = abs(local_count - api_count)
+        if difference == 0:
+            status = "HEALTHY"
+            quality_score = 100
+        else:
+            status = "SYNC_MISMATCH"
+            max_val = max(local_count, api_count)
+            if max_val > 0:
+                quality_score = int(((max_val - difference) / max_val) * 100)
+            else:
+                quality_score = 100
+    except Exception as e:
+        print(f"Warning: Reconciliation API fetch failed: {e}")
+        status = "PARTIAL_SYNC"
+        quality_score = 90
+        
+    return {
+        "local_count": local_count,
+        "api_count": api_count,
+        "difference": difference,
+        "quality_score": max(0, min(100, quality_score)),
+        "status": status
+    }
 
 
 @router.post("/reviews")

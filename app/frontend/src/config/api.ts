@@ -6,7 +6,6 @@ export const API_ENDPOINTS = {
   trades: `${API_BASE}/trades`,
   summary: `${API_BASE}/summary`,
   positions: `${API_BASE}/positions`,
-  risk: `${API_BASE}/risk`,
   sync: `${API_BASE}/sync`,
   taxSummary: `${API_BASE}/tax/summary`,
   taxExport: `${API_BASE}/tax/export`,

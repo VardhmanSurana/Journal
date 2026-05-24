@@ -8,9 +8,9 @@ import {
   BarChart3, PieChart, ArrowUpDown,
   TrendingUp, TrendingDown
 } from 'lucide-react'
-import { useCurrency } from '../hooks/useCurrency'
-import { useThemeClasses, useChartTheme } from '../utils/theme'
-import { SkeletonLoader } from '../components/SkeletonLoader'
+import { useCurrency } from '../../hooks/useCurrency'
+import { useThemeClasses, useChartTheme } from '../../utils/theme'
+import { SkeletonLoader } from '../../components/SkeletonLoader'
 
 interface AnalyticsProps {
   trades: any[]

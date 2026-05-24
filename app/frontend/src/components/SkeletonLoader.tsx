@@ -9,9 +9,9 @@ export const SkeletonLoader = ({
   variant = 'default', 
   theme = 'dark' 
 }: SkeletonLoaderProps) => {
-  const cardBg = theme === 'dark' ? 'bg-zinc-950 border-zinc-900/60' : 'bg-white border-zinc-200'
-  const pulseBg = theme === 'dark' ? 'bg-zinc-900' : 'bg-zinc-100'
-  const pulseText = theme === 'dark' ? 'bg-zinc-900/50' : 'bg-zinc-50'
+  const cardBg = theme === 'dark' ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-zinc-200'
+  const pulseBg = theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-100'
+  const pulseText = theme === 'dark' ? 'bg-zinc-800/40' : 'bg-zinc-50'
 
   if (variant === 'dashboard') {
     return (
@@ -38,7 +38,7 @@ export const SkeletonLoader = ({
             </div>
             <div className="space-y-2.5">
               {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className={`flex justify-between items-center p-3 rounded-xl border ${theme === 'dark' ? 'border-zinc-900/50 bg-zinc-900/10' : 'border-zinc-100 bg-zinc-50/50'}`}>
+                <div key={i} className={`flex justify-between items-center p-3 rounded-xl border ${theme === 'dark' ? 'border-zinc-800/40 bg-zinc-900/30' : 'border-zinc-100 bg-zinc-50/50'}`}>
                   <div className="flex items-center gap-3">
                     <div className={`w-7 h-7 rounded ${pulseBg} animate-pulse`} />
                     <div className="space-y-1.5">
@@ -77,7 +77,7 @@ export const SkeletonLoader = ({
               {/* Pulsing grid paths */}
               <div className="absolute inset-0 flex flex-col justify-between py-6 px-4">
                 {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="w-full border-t border-zinc-900/20" />
+                  <div key={i} className={`w-full border-t ${theme === 'dark' ? 'border-zinc-800/30' : 'border-zinc-900/20'}`} />
                 ))}
               </div>
             </div>
@@ -101,7 +101,7 @@ export const SkeletonLoader = ({
                 </div>
               ))}
             </div>
-            <div className={`mt-8 pt-6 border-t ${theme === 'dark' ? 'border-zinc-900' : 'border-zinc-200'} space-y-3`}>
+            <div className={`mt-8 pt-6 border-t ${theme === 'dark' ? 'border-zinc-800/60' : 'border-zinc-200'} space-y-3`}>
               <div className={`h-3 w-20 rounded ${pulseText} animate-pulse mb-2`} />
               {[1, 2, 3].map((i) => (
                 <div key={i} className="flex justify-between items-center">
@@ -160,12 +160,12 @@ export const SkeletonLoader = ({
 
         {/* Table rows skeleton */}
         <div className={`card border ${cardBg} rounded-2xl overflow-hidden`}>
-          <div className="p-6 border-b border-zinc-900/60">
+          <div className={`p-6 border-b ${theme === 'dark' ? 'border-zinc-800/60' : 'border-zinc-900/60'}`}>
             <div className={`h-5 w-48 rounded ${pulseBg} animate-pulse`} />
           </div>
           <div className="p-6 space-y-4">
             {[1, 2, 3, 5, 6].map((i) => (
-              <div key={i} className="flex justify-between items-center border-b border-zinc-900/20 pb-4 last:border-b-0 last:pb-0">
+              <div key={i} className={`flex justify-between items-center border-b ${theme === 'dark' ? 'border-zinc-800/30' : 'border-zinc-900/20'} pb-4 last:border-b-0 last:pb-0`}>
                 <div className="space-y-2">
                   <div className={`h-3.5 w-32 rounded ${pulseBg} animate-pulse`} />
                   <div className={`h-2.5 w-16 rounded ${pulseText} animate-pulse`} />
@@ -220,7 +220,7 @@ export const SkeletonLoader = ({
     return (
       <div className="space-y-3">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className={`flex items-center gap-3 p-3 border border-dashed border-zinc-900/50 rounded-xl`}>
+          <div key={i} className={`flex items-center gap-3 p-3 border border-dashed ${theme === 'dark' ? 'border-zinc-800/80' : 'border-zinc-900/50'} rounded-xl`}>
             <div className={`w-8 h-8 rounded-full ${pulseBg} animate-pulse flex-shrink-0`} />
             <div className="space-y-1.5 w-full">
               <div className={`h-3.5 w-1/3 rounded ${pulseBg} animate-pulse`} />

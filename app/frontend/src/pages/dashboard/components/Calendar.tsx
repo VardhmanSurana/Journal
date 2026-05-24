@@ -12,8 +12,8 @@ import {
 } from 'date-fns'
 import { useState, useMemo } from 'react'
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react'
-import { useCurrency } from '../hooks/useCurrency'
-import { useTheme } from '../hooks/useTheme'
+import { useCurrency } from '../../../hooks/useCurrency'
+import { useTheme } from '../../../hooks/useTheme'
 
 interface DailyPnL {
   date: string
@@ -70,7 +70,7 @@ export const PerformanceCalendar = ({ dailyPnL, onDayClick, selectedDate }: Cale
           <h3 className={`text-base font-semibold flex items-center gap-2 ${theme === 'dark' ? 'text-white' : 'text-zinc-900'}`}>
             <CalendarIcon size={16} className="text-zinc-400" /> Monthly P&L
           </h3>
-          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
+          <p className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider mt-0.5">
             Total: <span className={monthlyPnL >= 0 ? 'winner' : 'loser'}>
               {formatCurrency(monthlyPnL)}
             </span>
@@ -93,7 +93,7 @@ export const PerformanceCalendar = ({ dailyPnL, onDayClick, selectedDate }: Cale
       <div className="grid grid-cols-7 gap-1 bg-transparent">
         {/* Days Header */}
         {daysOfWeek.map((day, i) => (
-          <div key={i} className="py-1 text-center text-[10px] font-black text-zinc-600">
+          <div key={i} className="py-1 text-center text-[10px] font-black text-zinc-650">
             {day}
           </div>
         ))}

@@ -7,10 +7,10 @@ import {
   Coins, TrendingUp, TrendingDown, Clock, 
   ArrowUpRight, ArrowDownRight, Wallet, PieChart, Info, AlertTriangle, ShieldCheck
 } from 'lucide-react'
-import { useCurrency } from '../hooks/useCurrency'
-import { useThemeClasses, useChartTheme } from '../utils/theme'
-import { API_BASE } from '../config/api'
-import { SkeletonLoader } from '../components/SkeletonLoader'
+import { useCurrency } from '../../hooks/useCurrency'
+import { useThemeClasses, useChartTheme } from '../../utils/theme'
+import { API_BASE } from '../../config/api'
+import { SkeletonLoader } from '../../components/SkeletonLoader'
 
 interface EconomicsData {
   total_fees: number

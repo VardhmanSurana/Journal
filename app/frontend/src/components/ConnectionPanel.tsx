@@ -36,47 +36,7 @@ export const ConnectionPanel: React.FC<ConnectionPanelProps> = ({ health, theme 
             ? 'border-zinc-800 bg-zinc-900/40 text-zinc-300'
             : 'border-zinc-200 bg-white text-zinc-600'
     }`}>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            {isHealthy ? (
-              <Wifi size={16} className="text-emerald-500" />
-            ) : isSyncPending ? (
-              <Wifi size={16} className="text-zinc-500" />
-            ) : (
-              <WifiOff size={16} className="text-red-500" />
-            )}
-            <span className="font-bold text-xs uppercase tracking-wider">
-              {health.region} Mainnet
-            </span>
-          </div>
-
-          <div className={`h-4 w-[1px] ${theme === 'dark' ? 'bg-zinc-700/50' : 'bg-zinc-300'}`} />
-
-          <div className="flex items-center gap-2 text-xs">
-            <Activity size={14} className={health.sync_status === 'running' ? 'animate-pulse text-blue-400' : 'text-zinc-500'} />
-            <span className="font-medium">
-              Sync: <span className={
-                health.sync_status === 'failed' 
-                  ? 'text-red-500' 
-                  : isSyncPending 
-                    ? 'text-zinc-400' 
-                    : theme === 'dark' 
-                      ? 'text-zinc-100' 
-                      : 'text-zinc-800'
-              }>
-                {health.sync_status.toUpperCase()}
-              </span>
-            </span>
-          </div>
-
-          {health.last_success_at && (
-            <div className="text-[10px] text-zinc-500 tabular-nums">
-              Last Success: {new Date(health.last_success_at).toLocaleTimeString()}
-            </div>
-          )}
-        </div>
-
+      <div className="flex flex-wrap items-center justify-end gap-4 w-full">
         <div className="flex items-center gap-3">
           {health.rate_limit && (
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium tabular-nums ${

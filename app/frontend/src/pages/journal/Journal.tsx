@@ -6,7 +6,7 @@ import { useThemeClasses } from '../../utils/theme'
 import { SkeletonLoader } from '../../components/SkeletonLoader'
 import { motion, AnimatePresence } from 'framer-motion'
 
-interface DailyReview {
+interface TradeReview {
   id: number
   date_str: string
   mood: string
@@ -15,7 +15,7 @@ interface DailyReview {
   lessons: string
 }
 
-interface DailyReviewsProps {
+interface JournalProps {
   theme: 'dark' | 'light'
   trades: any[]
   onReview: (trade: any) => void
@@ -52,11 +52,11 @@ const itemVariants = {
   }
 }
 
-export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => {
-  const [reviews, setReviews] = useState<DailyReview[]>([])
+export const Journal = ({ theme, trades, onReview }: JournalProps) => {
+  const [reviews, setReviews] = useState<TradeReview[]>([])
   const [loading, setLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
-  const [editingReview, setEditingReview] = useState<Partial<DailyReview> | null>(null)
+  const [editingReview, setEditingReview] = useState<Partial<TradeReview> | null>(null)
   const { bgClass, textClass, cardBgClass, subTextClass } = useThemeClasses(theme)
 
   const journaledTrades = trades.filter(t => t.notes)
@@ -130,15 +130,15 @@ export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => 
   }
 
   if (loading) {
-    return <SkeletonLoader variant="reviews" theme={theme} />
+    return <SkeletonLoader variant="journal" theme={theme} />
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className={`text-xl font-semibold ${textClass}`}>Daily Trading Journal</h2>
-          <p className={`text-sm ${subTextClass}`}>Track your mental state and daily performance</p>
+          <h2 className={`text-xl font-semibold ${textClass}`}>Trade Reviews</h2>
+          <p className={`text-sm ${subTextClass}`}>Review and track each completed trade</p>
         </div>
       </div>
 
@@ -525,12 +525,9 @@ export const DailyReviews = ({ theme, trades, onReview }: DailyReviewsProps) => 
         animate="show"
         className="space-y-4"
       >
-{reviews.length === 0 ? (
-  <div className={`${bgClass} rounded-xl border p-12 text-center`}>
-    <BookOpen size={48} className={`mx-auto mb-4 ${subTextClass}`} />
-    <p className={`${subTextClass}`}></p>
-  </div>
-) : (
+        {reviews.length === 0 ? (
+          null
+        ) : (
           reviews.map(review => {
             const moodData = getMoodData(review.mood)
             const MoodIcon = moodData.icon

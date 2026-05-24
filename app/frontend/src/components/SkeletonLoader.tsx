@@ -1,7 +1,7 @@
 import React from 'react'
 
 interface SkeletonLoaderProps {
-  variant?: 'dashboard' | 'analytics' | 'economics' | 'reviews' | 'list' | 'default'
+  variant?: 'dashboard' | 'analytics' | 'feesFunding' | 'journal' | 'list' | 'default'
   theme?: 'dark' | 'light'
 }
 
@@ -145,7 +145,7 @@ export const SkeletonLoader = ({
     )
   }
 
-  if (variant === 'economics') {
+  if (variant === 'feesFunding') {
     return (
       <div className="space-y-6">
         {/* Quick summary strip */}
@@ -182,7 +182,7 @@ export const SkeletonLoader = ({
     )
   }
 
-  if (variant === 'reviews') {
+  if (variant === 'journal') {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">

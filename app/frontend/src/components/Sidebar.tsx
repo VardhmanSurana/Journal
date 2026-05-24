@@ -65,9 +65,9 @@ export const Sidebar = ({
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/' },
     { id: 'trades', label: 'Trade History', icon: History, path: '/trades' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/analytics' },
-    { id: 'economics', label: 'Economics', icon: Landmark, path: '/economics' },
-    { id: 'reviews', label: 'Daily Reviews', icon: BookOpen, path: '/reviews' },
-    { id: 'safety', label: 'Maintenance', icon: Settings, path: '/safety' },
+    { id: 'fees-funding', label: 'Fees & Funding', icon: Landmark, path: '/fees-funding' },
+    { id: 'journal', label: 'Journal', icon: BookOpen, path: '/journal' },
+    { id: 'maintenance', label: 'Maintenance', icon: Settings, path: '/maintenance' },
   ]
 
   return (

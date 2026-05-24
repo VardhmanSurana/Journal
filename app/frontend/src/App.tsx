@@ -4,9 +4,9 @@ import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-ro
 import { History, TrendingUp, TrendingDown, Sun, Moon, Bell, AlertTriangle, Activity, FileText, Landmark, Calendar, BookOpen } from 'lucide-react'
 import { Dashboard } from './pages/dashboard/Dashboard'
 import { Analytics } from './pages/analytics/Analytics'
-import { Economics } from './pages/economics/Economics'
-import { DailyReviews } from './pages/dailyReviews/DailyReviews'
-import { SafetyCenter } from './pages/safety/Safety'
+import { FeesFunding } from './pages/feesFunding/FeesFunding'
+import { Journal } from './pages/journal/Journal'
+import { Maintenance } from './pages/maintenance/Maintenance'
 import { CurrencyProvider, useCurrency } from './hooks/useCurrency'
 import { CurrencyToggle } from './components/CurrencyToggle'
 import { Sidebar } from './components/Sidebar'
@@ -190,9 +190,9 @@ function AppContent() {
               {activeTab === 'dashboard' ? 'Overview' : 
                activeTab === 'trades' ? 'History' :
                activeTab === 'analytics' ? 'Analysis' :
-               activeTab === 'economics' ? 'Economics' :
-               activeTab === 'reviews' ? 'Reflection' :
-               activeTab === 'safety' ? 'Maintenance' : 'Page'}
+               activeTab === 'fees-funding' ? 'Fees & Funding' :
+               activeTab === 'journal' ? 'Journal' :
+               activeTab === 'maintenance' ? 'Maintenance' : 'Page'}
             </h2>
             <h1 className={`text-2xl font-bold ${
               theme === 'dark' ? 'text-white' : 'text-zinc-900'
@@ -200,9 +200,9 @@ function AppContent() {
               {activeTab === 'dashboard' ? 'Trading Dashboard' : 
                activeTab === 'trades' ? 'Journal Log' :
                activeTab === 'analytics' ? 'Analytics Center' :
-               activeTab === 'economics' ? 'Fee & Funding Analysis' :
-               activeTab === 'reviews' ? 'Daily Reviews' :
-               activeTab === 'safety' ? 'System Maintenance' : 'Page'}
+               activeTab === 'fees-funding' ? 'Fees & Funding' :
+               activeTab === 'journal' ? 'Journal' :
+               activeTab === 'maintenance' ? 'Maintenance' : 'Page'}
             </h1>
           </div>
           
@@ -462,9 +462,9 @@ function AppContent() {
               </div>
             } />
             <Route path="/analytics" element={<Analytics trades={trades} summary={summary} theme={theme} />} />
-            <Route path="/economics" element={<Economics theme={theme} />} />
-            <Route path="/reviews" element={<DailyReviews theme={theme} trades={trades} onReview={(trade) => setReviewingTrade(trade)} />} />
-            <Route path="/safety" element={<SafetyCenter theme={theme} />} />
+            <Route path="/fees-funding" element={<FeesFunding theme={theme} />} />
+            <Route path="/journal" element={<Journal theme={theme} trades={trades} onReview={(trade) => setReviewingTrade(trade)} />} />
+            <Route path="/maintenance" element={<Maintenance theme={theme} />} />
           </Routes>
         </div>
       </main>

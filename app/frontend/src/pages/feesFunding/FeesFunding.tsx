@@ -12,7 +12,7 @@ import { useThemeClasses, useChartTheme } from '../../utils/theme'
 import { API_BASE } from '../../config/api'
 import { SkeletonLoader } from '../../components/SkeletonLoader'
 
-interface EconomicsData {
+interface FeesFundingData {
   total_fees: number
   total_funding: number
   total_rewards: number
@@ -24,12 +24,12 @@ interface EconomicsData {
   }[]
 }
 
-export const Economics = ({ theme }: { theme: 'light' | 'dark' }) => {
+export const FeesFunding = ({ theme }: { theme: 'light' | 'dark' }) => {
   const { format, convert } = useCurrency()
   const { bgClass, textClass, cardBgClass } = useThemeClasses(theme)
   const chartTheme = useChartTheme(theme)
   
-  const [data, setData] = useState<EconomicsData | null>(null)
+  const [data, setData] = useState<FeesFundingData | null>(null)
   const [optimization, setOptimization] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | 'all'>('30d')
@@ -44,7 +44,7 @@ export const Economics = ({ theme }: { theme: 'light' | 'dark' }) => {
         setData(econRes.data)
         setOptimization(optRes.data)
       } catch (err) {
-        console.error('Error fetching economics data:', err)
+        console.error('Error fetching fees & funding data:', err)
       } finally {
         setLoading(false)
       }
@@ -69,7 +69,7 @@ export const Economics = ({ theme }: { theme: 'light' | 'dark' }) => {
     }))
   }, [filteredHistory, convert])
 
-  if (loading) return <SkeletonLoader variant="economics" theme={theme} />
+  if (loading) return <SkeletonLoader variant="feesFunding" theme={theme} />
   if (!data) return <div className="p-8 text-center text-zinc-500 italic animate-pulse">No economic data found. Ensure your API key has "Read" permissions.</div>
 
   return (

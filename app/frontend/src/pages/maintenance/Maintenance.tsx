@@ -11,7 +11,7 @@ interface SafetyStats {
   status: string;
 }
 
-export const SafetyCenter: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => {
+export const Maintenance: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => {
   const [stats, setStats] = useState<SafetyStats | null>(null);
   const [reconciling, setReconciling] = useState(false);
 

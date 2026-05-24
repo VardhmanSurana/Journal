@@ -4,7 +4,7 @@
 
 # 🔺 Delta Journal
 
-Automated, high-fidelity crypto trading journal tailored specifically for **Delta Exchange** users. Equipped with an event-driven FIFO trade matching engine, Indian speculative tax calculations, AES-128 field-level encrypted notes, and a sleek, real-time React dashboard.
+Automated, high-fidelity crypto trading journal tailored specifically for **Delta Exchange** users. Equipped with an event-driven FIFO trade matching engine, Indian speculative tax calculations, AES-128 field-level encrypted notes, AI-powered trade analysis, real-time WebSocket data, and a sleek React dashboard.
 
 <p align="center">
   <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black&style=for-the-badge" alt="React 18" />
@@ -26,6 +26,10 @@ Automated, high-fidelity crypto trading journal tailored specifically for **Delt
   - [1. Environment Setup](#1-environment-setup)
   - [2. Local Development Stack](#2-local-development-stack)
   - [3. Containerized Deployment (Docker Compose)](#3-containerized-deployment-docker-compose)
+- [🤖 AI Trade Analysis](#-ai-trade-analysis)
+- [📊 Advanced Statistics](#-advanced-statistics)
+- [📈 Benchmark Comparison](#-benchmark-comparison)
+- [📥 Import & Export](#-import--export)
 - [🌐 Docker Outbound Proxy Routing (API Whitelisting)](#-docker-outbound-proxy-routing-api-whitelisting)
 - [🛡️ Security Hardening & Concurrency](#️-security-hardening--concurrency)
 - [🤝 Contributing](#-contributing)
@@ -42,35 +46,50 @@ Keeping a manual trading journal is tedious and error-prone. **Delta Journal** a
 ## 🧩 Features
 
 ### 📊 Full-Stack Dashboard
-*   **Real-time Overview:** Live equity curves, active open positions, dynamic win rates, and integrated crypto news feeds.
-*   **Economics & Financials:** Precise metrics for **Commissions**, **GST (18% Extracted)**, **Funding History**, and **Account Rewards**.
-*   **Performance Calendars:** Visually trace winning and losing streaks on an intuitive daily performance grid.
-*   **Dynamic Currency Engine**: Instantly toggle between USD and INR valuations globally across all pages and reports.
+- **Real-time Overview:** Live equity curves, active open positions, dynamic win rates, wallet balance, and integrated crypto news feeds.
+- **Advanced Statistics:** Sharpe, Sortino, and Calmar ratios, max win/loss streaks, average hold time, gross P&L in a collapsible section.
+- **Benchmark Comparison:** Toggle BTC/ETH/SOL return overlay on your equity curve via CoinGecko market data.
+- **OHLC Trade Charts:** Entry/exit price candles with ReferenceDot markers inside the trade detail modal.
+- **Performance Calendars:** Visually trace winning and losing streaks on an intuitive daily performance grid.
+- **Dynamic Currency Engine:** Instantly toggle between USD and INR valuations globally across all pages and reports.
+- **Pages:** Dashboard, Fees & Funding (with funding rate predictions), Journal (trade reviews), Import Data, Maintenance.
+
+### 🤖 AI Trade Analysis
+- **Vertex AI (Gemini 2.5 Pro):** Structured JSON critique via Pydantic schema — pattern identification, psychological state, mistakes, actionable suggestions, risk score.
+- **Ollama Support:** Run local LLMs (Llama 3.2, etc.) with automatic model pulling on first use.
+- One-click analysis button inside every trade detail modal.
 
 ### 📈 Indian Tax Compliance
-*   **Derivative Speculative Slab-Rate:** Programmatic categorization of derivative income under the personal income tax slab.
-*   **Turnover & Audit Tracking:** Automated calculations matching Section 44AB threshold requirements (₹10Cr audits).
-*   **GST Separation:** Extracts standard $18/118$ financial GST components from dynamic trade commission fees.
+- **Derivative Speculative Slab-Rate:** Programmatic categorization of derivative income under the personal income tax slab.
+- **Turnover & Audit Tracking:** Automated calculations matching Section 44AB threshold requirements (₹10Cr audits).
+- **GST Separation:** Extracts standard 18/118 financial GST components from dynamic trade commission fees.
 
 ### 🧠 Psychological Journaling
-*   **AES-128 Notes Encrypter:** Daily reviews, mood markers, and strategic lessons are encrypted on-disk using military-grade AES-128 block ciphers and PBKDF2 key derivation.
+- **AES-128 Notes Encrypter:** Daily reviews, mood markers, and strategic lessons are encrypted on-disk using military-grade AES-128 block ciphers and PBKDF2 key derivation.
+
+### 📥 Import & Export
+- **CSV Import:** Drag-and-drop CSV files with smart column auto-detection (Delta, Binance, Bybit formats supported).
+- **Export Reports:** Download trade-level and monthly summary CSV reports.
 
 ---
 
 ## 🏗️ System Architecture
 
-Delta Journal uses an event-driven sync engine combined with a secure local database that decouples heavy exchange API requests from the frontend client.
+Delta Journal uses an event-driven sync engine combined with a secure local database that decouples heavy exchange API requests from the frontend client. WebSocket connections provide real-time positions, wallet, and margin data with REST fallback.
 
 ```mermaid
 graph TD
     subgraph "External API Layer"
         Delta[Delta Exchange API]
+        CG[CoinGecko API]
     end
 
     subgraph "Backend Engine (FastAPI)"
-        Sync[Sync Daemon: app/backend/api/sync.py]
+        WS[WebSocket Client: ws_client.py]
+        Sync[Sync Daemon: sync.py]
         DB[(WAL SQLite: app.db)]
-        API[FastAPI Router: app/backend/api/routes.py]
+        API[FastAPI Router: routes.py]
+        AI[AI Engine: ai.py]
         Crypt[AES-128 Encryption Engine]
     end
 
@@ -78,10 +97,14 @@ graph TD
         Dashboard[React SPA Dashboard]
     end
 
-    Delta -->|Fetch Partial Fills| Sync
-    Sync -->|FIFO Matching Algorithm| DB
-    Crypt <-->|Read/Write Encrypted Logs| DB
-    API <-->|Serve Clean JSON APIs| DB
+    Delta -->|REST + WebSocket| WS
+    Delta -->|Fetch Trades & Orders| Sync
+    Sync -->|FIFO Matching| DB
+    WS -->|Real-time Cache| API
+    AI -->|Vertex AI / Ollama| API
+    CG -->|Benchmark Prices| API
+    Crypt <-->|Encrypted Logs| DB
+    API <-->|Clean JSON APIs| DB
     Dashboard <-->|Query Metrics| API
 ```
 
@@ -89,9 +112,9 @@ graph TD
 
 ## ⚙️ Prerequisites
 
-*   **Node.js**: [Bun](https://bun.sh) (v1.3+) recommended
-*   **Python**: v3.11+ with [uv](https://github.com/astral-sh/uv) package manager
-*   **API Credentials**: Read-Only API Keys from [Delta Exchange](https://www.delta.exchange/app/account/api)
+- **Node.js:** [Bun](https://bun.sh) (v1.3+) recommended
+- **Python:** v3.11+ with [uv](https://github.com/astral-sh/uv) package manager
+- **API Credentials:** Read-Only API Keys from [Delta Exchange](https://www.delta.exchange/app/account/api)
 
 ---
 
@@ -102,85 +125,135 @@ graph TD
 Copy the template configuration file to configure your local credentials:
 
 ```bash
-# Create local configuration file
 cp .env.example .env
 ```
 
 Open `.env` and fill in your secure **Read-Only API Keys**:
+
 ```ini
 DELTA_API_KEY=your_read_only_key
 DELTA_API_SECRET=your_read_only_secret
-DELTA_REGION=india # "india" or "global"
+DELTA_REGION=india               # "india" or "global"
+AI_PROVIDER=vertex               # "vertex" or "ollama"
+PROJECT_ID=your_gcp_project_id   # Required for Vertex AI
 ```
 
 ### 2. Local Development Stack
 
-Run the integrated launcher to boot the FastAPI backend, the auto-sync loop, and the Vite development server simultaneously:
+Use the Makefile to boot the FastAPI backend and Vite dev server simultaneously:
 
 ```bash
-# Provide permissions and run
-chmod +x start.sh
-./start.sh
+make dev
 ```
 
--   **Frontend Dashboard:** `http://localhost:5173`
--   **Backend REST API:** `http://localhost:8000`
+Or manually:
+
+```bash
+chmod +x start.sh && ./start.sh
+```
+
+- **Frontend Dashboard:** `http://localhost:5173`
+- **Backend REST API:** `http://localhost:8000`
 
 ### 3. Containerized Deployment (Docker Compose)
 
-Launch the fully configured multi-container application stack in the background:
+Launch the fully configured multi-container application stack:
 
 ```bash
-# Build and run with Docker Compose
 docker compose up --build -d
 ```
 
--   **Frontend Dashboard:** `http://localhost`
--   **Backend REST API:** `http://localhost:8000/api`
+- **Frontend Dashboard:** `http://localhost`
+- **Backend REST API:** `http://localhost:8000/api`
+- **Ollama (optional):** `http://localhost:11434`
+
+> When using `AI_PROVIDER=ollama` in Docker, the backend automatically checks if the model is installed and pulls it on first use.
+
+---
+
+## 🤖 AI Trade Analysis
+
+Delta Journal supports two AI backends for trade critique:
+
+| Provider | Setup | Model |
+|----------|-------|-------|
+| **Vertex AI** (default) | Set `PROJECT_ID` in `.env` (Google Cloud ADC) | `gemini-2.5-pro` with structured Pydantic output |
+| **Ollama** (local) | Set `AI_PROVIDER=ollama` in `.env` | Configurable via `OLLAMA_MODEL` (default: `llama3.2`) |
+
+The analysis returns: risk score (1-10), identified pattern, psychological state, mistake list, and actionable suggestions — displayed inside the trade detail modal.
+
+> No Delta Exchange API key is required for AI analysis.
+
+---
+
+## 📊 Advanced Statistics
+
+The Dashboard includes a collapsible Advanced Statistics section with:
+
+- **Sharpe Ratio** (risk-adjusted return)
+- **Sortino Ratio** (downside deviation)
+- **Calmar Ratio** (return vs max drawdown)
+- **Max Win / Loss Streaks**
+- **Average Holding Time**
+- **Gross P&L**
+
+---
+
+## 📈 Benchmark Comparison
+
+Toggle benchmark overlays on the equity curve chart to compare your performance against major crypto assets:
+
+- BTC (Bitcoin)
+- ETH (Ethereum)
+- SOL (Solana)
+
+Powered by the free CoinGecko public API — no API key needed.
+
+---
+
+## 📥 Import & Export
+
+### CSV Import
+Navigate to **Import Data** page, drag-and-drop CSV files. The engine auto-detects column layouts from Delta Exchange, Binance, and Bybit export formats.
+
+### Export Reports
+Download CSV reports from the Import Data page:
+- **Trade-level export:** All closed trades with full metadata
+- **Monthly summary:** Aggregated P&L, fees, and trade counts per month
+
+> No Delta Exchange API key needed for import/export features.
 
 ---
 
 ## 🌐 Docker Outbound Proxy Routing (API Whitelisting)
 
-Delta Exchange API keys require **IP Whitelisting** for secure data fetching. If your Docker host environment operates behind a dynamic IP (e.g., dynamic home ISP or cloud server rotations), outbound synchronizations will fail when your network changes.
+Delta Exchange API keys require **IP Whitelisting** for secure data fetching. If your Docker host environment operates behind a dynamic IP, Delta Journal natively supports routing all outbound queries through a **Static Proxy**.
 
-Delta Journal natively supports routing all outbound Delta Exchange queries through a stable **Static Proxy**.
+```ini
+# === STATIC IP PROXY (Optional) ===
+PROXY_USER=proxyuser
+PROXY_PASS=proxypass123
+PROXY_IP=185.230.124.5
+PROXY_PORT=8080
 
-### Configuration Steps:
-1.  Open your `.env` file at the root.
-2.  Populate the proxy parameters:
-    ```ini
-    # === STATIC IP PROXY (Optional) ===
-    PROXY_USER=proxyuser
-    PROXY_PASS=proxypass123
-    PROXY_IP=185.230.124.5
-    PROXY_PORT=8080
-
-    # Uncomment the compiled proxy connections to activate them in Docker Compose:
-    # HTTP_PROXY=http://proxyuser:proxypass123@185.230.124.5:8080
-    # HTTPS_PROXY=http://proxyuser:proxypass123@185.230.124.5:8080
-    ```
-3.  **Uncomment** the compiled `HTTP_PROXY` and `HTTPS_PROXY` lines.
-4.  Apply changes and restart your stack:
-    ```bash
-    docker compose down && docker compose up -d
-    ```
-    *The Python backend will immediately route all external exchange connections through the configured proxy, satisfying your Delta whitelist rules.*
+# Uncomment to activate:
+# HTTP_PROXY=http://proxyuser:proxypass123@185.230.124.5:8080
+# HTTPS_PROXY=http://proxyuser:proxypass123@185.230.124.5:8080
+```
 
 ---
 
 ## 🛡️ Security Hardening & Concurrency
 
-*   **Read-Only by Design:** The backend engine strictly excludes execution routes, buy/sell functions, and transaction capabilities. Your trading capital is structurally safe.
-*   **Write-Ahead Logging (WAL):** SQLite database is initialized in WAL mode with a `30.0` second concurrency timeout, ensuring smooth background syncing while you interact with the UI.
-*   **Robust Encryption:** Daily journal notes, mistakes, emotions, and lessons are transformed into high-entropy AES-128 ciphertext prior to SQLite insertion.
-*   **Credential Masking:** Custom HMAC signatures are calculated strictly via headers. Secrets are programmatically redacted from all application logs and error stack traces.
+- **Read-Only by Design:** The backend strictly excludes execution routes, buy/sell functions, and transaction capabilities.
+- **Write-Ahead Logging (WAL):** SQLite initialized in WAL mode with a 30-second concurrency timeout.
+- **Robust Encryption:** Journal notes, mistakes, emotions, and lessons are AES-128 encrypted before storage.
+- **Credential Masking:** Secrets are programmatically redacted from all application logs and error stack traces.
+- **Real-time WebSocket:** Persistent WebSocket connection to Delta Exchange reduces REST API calls and rate limit pressure.
 
 ---
 
 ## 🤝 Contributing
-
-Contributions make the open-source community an amazing place to learn and build. If you want to contribute:
 
 1. Fork the project.
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`).

@@ -361,7 +361,7 @@ function AppContent() {
                                     {trade.symbol}
                                   </div>
                                   <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mt-0.5">
-                                    {formatTime(trade.exit_time)}
+                                    {formatTime(trade.entry_time)} — {formatTime(trade.exit_time)}
                                   </div>
                                 </div>
                               </div>

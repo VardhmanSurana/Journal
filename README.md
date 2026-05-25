@@ -163,7 +163,7 @@ Launch the fully configured multi-container application stack:
 docker compose up --build -d
 ```
 
-- **Frontend Dashboard:** `http://localhost`
+- **Frontend Dashboard:** `http://localhost:80`
 - **Backend REST API:** `http://localhost:8000/api`
 - **Ollama (optional):** `http://localhost:11434`
 

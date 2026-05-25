@@ -1,4 +1,5 @@
 import json
+import os
 from ollama import Client
 from pydantic import BaseModel, Field
 from typing import List
@@ -79,10 +80,10 @@ def _format_prompt(trade: dict) -> str:
 def _analyze_vertex(prompt: str) -> TradeCritique:
     from google import genai
     from google.genai import types
-    project = config.PROJECT_ID
-    if not project:
-        raise ValueError("PROJECT_ID not configured.")
-    client = genai.Client(vertexai=True, project=project, location="us-central1")
+    project_id = os.getenv("PROJECT_ID", "")
+    if not project_id:
+        raise ValueError("Set PROJECT_ID in .env for Vertex AI.")
+    client = genai.Client(vertexai=True, project=project_id, location="us-central1")
     response = client.models.generate_content(
         model=MODEL,
         contents=prompt,
@@ -99,7 +100,7 @@ def _analyze_vertex(prompt: str) -> TradeCritique:
 
 
 def _get_ollama_client() -> Client:
-    return Client(host=config.OLLAMA_BASE_URL)
+    return Client()
 
 
 def _ensure_ollama_model() -> None:

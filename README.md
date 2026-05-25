@@ -112,62 +112,64 @@ graph TD
 
 ## ⚙️ Prerequisites
 
-- **Node.js:** [Bun](https://bun.sh) (v1.3+) recommended
+- **Git**
 - **Python:** v3.11+ with [uv](https://github.com/astral-sh/uv) package manager
+- **Bun:** v1.3+ ([install guide](https://bun.sh))
 - **API Credentials:** Read-Only API Keys from [Delta Exchange](https://www.delta.exchange/app/account/api)
+- **Ollama (optional):** For local AI analysis — [install Ollama](https://ollama.com)
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Environment Setup
+### 1. Clone & Install Dependencies
 
-Copy the template configuration file to configure your local credentials:
+```bash
+git clone https://github.com/your-username/delta-journal.git
+cd delta-journal
+
+# Install backend dependencies
+cd app/backend && uv sync && cd ../..
+
+# Install frontend dependencies
+cd app/frontend && bun install && cd ../..
+```
+
+### 2. Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and fill in your secure **Read-Only API Keys**:
+Open `.env` and fill in your Delta Exchange API keys:
 
 ```ini
 DELTA_API_KEY=your_read_only_key
 DELTA_API_SECRET=your_read_only_secret
-DELTA_REGION=india               # "india" or "global"
-AI_PROVIDER=vertex               # "vertex" or "ollama"
-PROJECT_ID=your_gcp_project_id   # Required for Vertex AI
+DELTA_REGION=india
 ```
 
-### 2. Local Development Stack
-
-Use the Makefile to boot the FastAPI backend and Vite dev server simultaneously:
+### 3. Local Development
 
 ```bash
+# Start both backend and frontend
 make dev
 ```
 
-Or manually:
+- **Frontend:** `http://localhost:5173`
+- **Backend API:** `http://localhost:8000`
 
-```bash
-chmod +x start.sh && ./start.sh
-```
-
-- **Frontend Dashboard:** `http://localhost:5173`
-- **Backend REST API:** `http://localhost:8000`
-
-### 3. Containerized Deployment (Docker Compose)
-
-Launch the fully configured multi-container application stack:
+### 4. Docker Deployment
 
 ```bash
 docker compose up --build -d
 ```
 
-- **Frontend Dashboard:** `http://localhost:80`
-- **Backend REST API:** `http://localhost:8000/api`
-- **Ollama (optional):** `http://localhost:11434`
+- **Frontend:** `http://localhost:5173`
+- **Backend API:** `http://localhost:8000/api`
+- **Ollama:** `http://localhost:11434`
 
-> When using `AI_PROVIDER=ollama` in Docker, the backend automatically checks if the model is installed and pulls it on first use.
+> The backend automatically pulls the configured Ollama model on first use when `AI_PROVIDER=ollama`.
 
 ---
 

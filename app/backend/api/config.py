@@ -17,7 +17,7 @@ for env_path in possible_paths:
 
 class Config:
     def __init__(self) -> None:
-        self.AI_PROVIDER: str = os.getenv("AI_PROVIDER", "vertex")
+        self.AI_PROVIDER: str = os.getenv("AI_PROVIDER", "ollama")
         self.PROJECT_ID: str = os.getenv("PROJECT_ID", "")
         self.OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         self.OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2")

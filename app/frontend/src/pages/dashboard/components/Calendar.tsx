@@ -56,11 +56,12 @@ export const PerformanceCalendar = ({ dailyPnL, onDayClick, selectedDate }: Cale
 
   const daysOfWeek = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
-  // Monthly stats
+  // Monthly stats (rounded to 2 decimal places to avoid conversion rounding mismatch)
   const monthlyPnL = useMemo(() => {
-    return dailyPnL
+    const rawSum = dailyPnL
       .filter(item => isSameMonth(new Date(item.date), currentDate))
       .reduce((sum, item) => sum + item.value, 0)
+    return Math.round(rawSum * 100) / 100
   }, [dailyPnL, currentDate])
 
   return (

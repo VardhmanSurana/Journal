@@ -21,6 +21,7 @@ import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { formatTimeWithSeconds } from '../utils/dates'
 
 function cn(...inputs: any[]) {
   return twMerge(clsx(inputs))
@@ -245,7 +246,7 @@ export const Sidebar = ({
                     "font-bold",
                     theme === 'dark' ? "text-zinc-300" : "text-zinc-700"
                   )}>
-                    {new Date(health.last_success_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {formatTimeWithSeconds(health.last_success_at)}
                   </span>
                 </div>
               )}

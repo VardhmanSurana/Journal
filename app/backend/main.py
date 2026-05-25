@@ -10,22 +10,7 @@ from api.database import init_db, engine
 from api.sync import run_sync
 from api.ws_client import connect as ws_connect
 from sqlmodel import Session
-
-app = FastAPI(title="Delta Journal API")
-
-# Ensure static and screenshots folders exist
-os.makedirs("static/screenshots", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
-# Setup CORS for the React app
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+from contextlib import asynccontextmanager
 
 async def background_heartbeat():
     """Periodic background sync every hour."""
@@ -40,8 +25,9 @@ async def background_heartbeat():
         # Wait for 1 hour (3600 seconds)
         await asyncio.sleep(3600)
 
-@app.on_event("startup")
-async def on_startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup actions
     init_db()
     # Trigger initial sync in the background so startup isn't blocked
     def initial_sync():
@@ -58,6 +44,23 @@ async def on_startup():
     # Run initial sync and start heartbeat
     asyncio.create_task(background_heartbeat())
     asyncio.create_task(asyncio.to_thread(initial_sync))
+    yield
+
+app = FastAPI(title="Delta Journal API", lifespan=lifespan)
+
+# Ensure static and screenshots folders exist
+os.makedirs("static/screenshots", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# Setup CORS for the React app
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(router, prefix="/api")
 

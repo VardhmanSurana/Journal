@@ -60,7 +60,9 @@ const MISTAKES = [
 export const TradeReviewModal = ({ trade, theme = 'dark', onClose, onSave }: TradeReviewModalProps) => {
   const { format } = useCurrency()
   const [strategy, setStrategy] = useState(trade.strategy || '')
-  const [emotion, setEmotion] = useState(trade.emotion || '')
+  const [selectedEmotions, setSelectedEmotions] = useState<string[]>(
+    trade.emotion ? trade.emotion.split(',').map(e => e.trim()) : []
+  )
   const [session, setSession] = useState(trade.session || '')
   const [notes, setNotes] = useState(trade.notes || '')
   const [prePlan, setPrePlan] = useState(trade.pre_plan || '')
@@ -168,7 +170,7 @@ export const TradeReviewModal = ({ trade, theme = 'dark', onClose, onSave }: Tra
   const handleSave = () => {
     const updates = {
       strategy: strategy || null,
-      emotion: emotion || null,
+      emotion: selectedEmotions.length > 0 ? selectedEmotions.join(', ') : null,
       session: session || null,
       notes: notes || null,
       pre_plan: prePlan || null,
@@ -185,6 +187,14 @@ export const TradeReviewModal = ({ trade, theme = 'dark', onClose, onSave }: Tra
 
   const insertPrompt = (prompt: string) => {
     setNotes(prev => prev ? `${prev}\n\n${prompt}: ` : `${prompt}: `)
+  }
+
+  const toggleEmotion = (emo: string) => {
+    setSelectedEmotions(prev =>
+      prev.includes(emo)
+        ? prev.filter(e => e !== emo)
+        : [...prev, emo]
+    )
   }
 
   const toggleMistake = (mistake: string) => {
@@ -488,11 +498,11 @@ export const TradeReviewModal = ({ trade, theme = 'dark', onClose, onSave }: Tra
                     <button
                       key={e}
                       type="button"
-                      onClick={() => setEmotion(emotion === e ? '' : e)}
-                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold tracking-wide transition-all cursor-pointer ${
-                        emotion === e
-                          ? (theme === 'dark' ? 'bg-zinc-100 text-zinc-950 font-black shadow' : 'bg-zinc-905 text-white font-black shadow-md')
-                          : (theme === 'dark' ? 'bg-zinc-900 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800' : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200')
+                      onClick={() => toggleEmotion(e)}
+                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold tracking-wide transition-all border cursor-pointer ${
+                        selectedEmotions.includes(e)
+                          ? (theme === 'dark' ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' : 'bg-purple-50 text-purple-700 border-purple-200')
+                          : (theme === 'dark' ? 'bg-zinc-900 text-zinc-400 hover:text-zinc-100 border-transparent hover:bg-zinc-800' : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900 border-transparent hover:bg-zinc-200')
                       }`}
                     >
                       {e}

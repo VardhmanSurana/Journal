@@ -28,7 +28,7 @@ interface CalendarProps {
 
 export const PerformanceCalendar = ({ dailyPnL, onDayClick, selectedDate }: CalendarProps) => {
   const [currentDate, setCurrentDate] = useState(new Date())
-  const { format: formatCurrency } = useCurrency()
+  const { format: formatCurrency, convert } = useCurrency()
   const { theme } = useTheme()
 
   const monthStart = startOfMonth(currentDate)
@@ -102,6 +102,7 @@ export const PerformanceCalendar = ({ dailyPnL, onDayClick, selectedDate }: Cale
         {calendarDays.map((day, i) => {
           const dateStr = format(day, 'yyyy-MM-dd')
           const pnl = pnlMap[dateStr]
+          const convertedPnl = pnl !== undefined ? convert(pnl) : undefined
           const isCurrentMonth = isSameMonth(day, monthStart)
           const isToday = isSameDay(day, new Date())
           const isSelected = selectedDate === dateStr
@@ -137,14 +138,14 @@ export const PerformanceCalendar = ({ dailyPnL, onDayClick, selectedDate }: Cale
                 {format(day, 'd')}
               </span>
               
-              {pnl !== undefined && isCurrentMonth && (
+              {convertedPnl !== undefined && isCurrentMonth && (
                 <div className={`
                   text-[10px] font-black tracking-tighter leading-none
-                  ${pnl > 0 ? 'winner' : pnl < 0 ? 'loser' : 'text-zinc-500'}
+                  ${convertedPnl > 0 ? 'winner' : convertedPnl < 0 ? 'loser' : 'text-zinc-500'}
                 `}>
-                  {pnl > 0 ? '▲' : pnl < 0 ? '▼' : ''}
-                  {Math.abs(pnl) >= 1000 ? (Math.abs(pnl)/1000).toFixed(1) + 'k' : 
-                   Math.abs(pnl) < 100 ? Math.abs(pnl).toFixed(1) : Math.abs(pnl).toFixed(0)}
+                  {convertedPnl > 0 ? '▲' : convertedPnl < 0 ? '▼' : ''}
+                  {Math.abs(convertedPnl) >= 1000 ? (Math.abs(convertedPnl)/1000).toFixed(1) + 'k' : 
+                   Math.abs(convertedPnl) < 100 ? Math.abs(convertedPnl).toFixed(1) : Math.abs(convertedPnl).toFixed(0)}
                 </div>
               )}
             </div>

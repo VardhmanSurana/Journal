@@ -17,7 +17,6 @@ for env_path in possible_paths:
 
 class Config:
     def __init__(self) -> None:
-        self.AI_PROVIDER: str = os.getenv("AI_PROVIDER", "ollama")
         self.OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2")
         self.REGION: str = os.getenv("DELTA_REGION", "india")
         

@@ -4,6 +4,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { X, TrendingUp, TrendingDown, Calendar, Clock, DollarSign, ArrowRight, Target, BookOpen, Image as ImageIcon, BarChart3, Sparkles } from 'lucide-react'
 import { useCurrency } from '../hooks/useCurrency'
 import { API_BASE } from '../config/api'
+import { formatDate as fmtDate, formatTime, formatDateTime } from '../utils/dates'
 
 interface TradeDetailModalProps {
   trade: any
@@ -267,7 +268,7 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
                 <div>
                   <div className="text-xs text-zinc-500">Entry Date</div>
                   <div className={`text-sm font-medium ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>
-                    {entryDate.toLocaleDateString()}
+                    {fmtDate(trade.entry_time)}
                   </div>
                 </div>
               </div>
@@ -278,7 +279,7 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
                 <div>
                   <div className="text-xs text-zinc-500">Exit Date</div>
                   <div className={`text-sm font-medium ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>
-                    {exitDate.toLocaleDateString()}
+                    {fmtDate(trade.exit_time)}
                   </div>
                 </div>
               </div>
@@ -469,6 +470,22 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
                             : 'bg-rose-50 text-rose-700 border-rose-200'
                         }`}>
                           {m.trim()}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {trade.emotion && (
+                  <div className={`mt-6 pt-6 border-t ${theme === 'dark' ? 'border-zinc-800/50' : 'border-zinc-200'}`}>
+                    <h4 className="text-[10px] font-black uppercase text-purple-500 mb-2">Emotion During Trade</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {trade.emotion.split(',').map((e: string) => (
+                        <span key={e} className={`px-2 py-1 text-[10px] font-bold rounded-lg border ${
+                          theme === 'dark' 
+                            ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
+                            : 'bg-purple-50 text-purple-700 border-purple-200'
+                        }`}>
+                          {e.trim()}
                         </span>
                       ))}
                     </div>
@@ -666,9 +683,12 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
                     axisLine={false}
                     tickFormatter={(ts) => {
                       const d = new Date(ts * 1000)
-                      return chartResolution === '4h' || chartResolution === '1h'
-                        ? `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${d.toLocaleTimeString([], { hour: '2-digit' })}h`
-                        : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      const opts: any = { timeZone: 'Asia/Kolkata' }
+                      if (chartResolution === '4h' || chartResolution === '1h') {
+                        return d.toLocaleDateString('en-IN', { ...opts, month: 'short', day: 'numeric' })
+                          + ' ' + d.toLocaleTimeString('en-IN', { ...opts, hour: '2-digit' }) + 'h'
+                      }
+                      return d.toLocaleTimeString('en-IN', { ...opts, hour: '2-digit', minute: '2-digit' })
                     }}
                   />
                   <YAxis 
@@ -686,7 +706,7 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
                       borderRadius: '12px',
                       fontSize: '12px'
                     }}
-                    labelFormatter={(ts) => new Date(ts * 1000).toLocaleString()}
+                    labelFormatter={(ts) => new Date(ts * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
                     formatter={(value: number) => [format(value), 'Price']}
                   />
                   <Area 

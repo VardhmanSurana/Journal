@@ -11,6 +11,7 @@ import {
 import { useCurrency } from '../../hooks/useCurrency'
 import { useThemeClasses, useChartTheme } from '../../utils/theme'
 import { SkeletonLoader } from '../../components/SkeletonLoader'
+import { getISTHour, getISTDayOfWeek } from '../../utils/dates'
 
 interface AnalyticsProps {
   trades: any[]
@@ -46,13 +47,12 @@ export const Analytics = ({ trades, summary, theme }: AnalyticsProps) => {
         byDirection[dir].pnl += t.net_profit
       }
 
-      const exitDate = new Date(t.exit_time)
-      const hour = exitDate.getHours()
+      const hour = getISTHour(t.exit_time)
       byHour[hour].hour = hour
       byHour[hour].count++
       byHour[hour].pnl += t.net_profit
 
-      const day = exitDate.getDay()
+      const day = getISTDayOfWeek(t.exit_time)
       const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
       byDay[day].day = days[day]
       byDay[day].count++

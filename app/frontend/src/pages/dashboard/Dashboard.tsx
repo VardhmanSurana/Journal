@@ -14,6 +14,7 @@ import { PerformanceCalendar } from './components/Calendar'
 import { SkeletonLoader } from '../../components/SkeletonLoader'
 import { EmptyStateCard } from './components/EmptyState'
 import { motion } from 'framer-motion'
+import { formatTime } from '../../utils/dates'
 
 interface DashboardProps {
   summary: any
@@ -97,13 +98,7 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
     return data
   }, [summary?.cumulative_pnl, currency, rate])
 
-  const convertedDailyPnl = useMemo(() => {
-    if (!summary?.daily_pnl) return []
-    return summary.daily_pnl.map((d: any) => ({
-      ...d,
-      value: convert(d.value)
-    }))
-  }, [summary?.daily_pnl, convert])
+  // Pass raw USD daily P&L values to the PerformanceCalendar, which converts them dynamically.
 
   const firstTradeDate = useMemo(() => {
     if (!allTrades || allTrades.length === 0) return ''
@@ -439,7 +434,7 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
                       </div>
                       <div className="text-[10px] text-zinc-500 flex items-center gap-2 mt-1">
                         <Clock size={10} className="text-zinc-400" />
-                        <span>{new Date(t.exit_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>{formatTime(t.exit_time)}</span>
                         <span className="text-zinc-700">·</span>
                         <span>{t.size} units</span>
                       </div>
@@ -471,7 +466,7 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
         {/* Calendar */}
         <div className="lg:col-span-1">
           <PerformanceCalendar 
-            dailyPnL={convertedDailyPnl} 
+            dailyPnL={summary.daily_pnl || []} 
             onDayClick={setSelectedDate}
             selectedDate={selectedDate}
           />

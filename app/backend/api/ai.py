@@ -1,5 +1,4 @@
 import json
-import os
 from ollama import Client
 from pydantic import BaseModel, Field
 from typing import List
@@ -77,30 +76,11 @@ def _format_prompt(trade: dict) -> str:
     )
 
 
-def _analyze_vertex(prompt: str) -> TradeCritique:
-    from google import genai
-    from google.genai import types
-    project_id = os.getenv("PROJECT_ID", "")
-    if not project_id:
-        raise ValueError("Set PROJECT_ID in .env for Vertex AI.")
-    client = genai.Client(vertexai=True, project=project_id, location="us-central1")
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=0.1,
-            response_mime_type="application/json",
-            response_schema=TradeCritique,
-        ),
-    )
-    analysis: TradeCritique | None = response.parsed
-    if analysis is None:
-        raise ValueError("Model returned empty response")
-    return analysis
-
-
 def _get_ollama_client() -> Client:
-    return Client()
+    import os
+    # Read host from environment OLLAMA_HOST or fallback to standard library auto-resolution
+    host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    return Client(host=host)
 
 
 def _ensure_ollama_model() -> None:
@@ -134,10 +114,7 @@ def _analyze_ollama(prompt: str) -> TradeCritique:
 def analyze_trade(trade: dict) -> dict:
     prompt = _format_prompt(trade)
     try:
-        if config.AI_PROVIDER == "ollama":
-            analysis = _analyze_ollama(prompt)
-        else:
-            analysis = _analyze_vertex(prompt)
+        analysis = _analyze_ollama(prompt)
         return {
             "score": analysis.risk_metric_score,
             "strengths": "N/A",
@@ -147,4 +124,4 @@ def analyze_trade(trade: dict) -> dict:
             "psychological_state": analysis.psychological_state,
         }
     except Exception as e:
-        raise ValueError(f"{config.AI_PROVIDER.title()} analysis failed: {e}")
+        raise ValueError(f"Ollama analysis failed: {e}")

@@ -1,4 +1,4 @@
-import { BookOpen, Plus, Save, X, Calendar, Smile, Frown, Meh, Edit2, Trash2, Brain, Target, TrendingUp, TrendingDown } from 'lucide-react'
+import { BookOpen, Plus, Save, X, Calendar, Smile, Frown, Meh, Edit2, Trash2, Brain, Target, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react'
 import axios from 'axios'
 import { useState, useEffect } from 'react'
 import { API_BASE } from '../../config/api'
@@ -58,6 +58,19 @@ export const Journal = ({ theme, onReview }: JournalProps) => {
   const [loading, setLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [editingReview, setEditingReview] = useState<Partial<TradeReview> | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    show: boolean
+    type: 'trade' | 'review'
+    id: number | null
+    title: string
+    message: string
+  }>({
+    show: false,
+    type: 'trade',
+    id: null,
+    title: '',
+    message: ''
+  })
   const { bgClass, textClass, cardBgClass, subTextClass } = useThemeClasses(theme)
 
   const hasJournalData = (t: any) =>
@@ -132,23 +145,41 @@ export const Journal = ({ theme, onReview }: JournalProps) => {
     }
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this entry?')) return
-    try {
-      await axios.delete(`${API_BASE}/reviews/${id}`)
-      await fetchReviews()
-    } catch (err) {
-      console.error('Error deleting review:', err)
-    }
+  const handleDelete = (id: number) => {
+    setDeleteConfirm({
+      show: true,
+      type: 'review',
+      id,
+      title: 'Delete Journal Entry',
+      message: 'Are you sure you want to delete this journal entry reflection? This action cannot be undone.'
+    })
   }
 
-  const handleDeleteTrade = async (tradeId: number) => {
-    if (!confirm('Are you sure you want to delete this trade entirely? This will remove all journal data, screenshots, and the trade record.')) return
+  const handleDeleteTrade = (tradeId: number) => {
+    setDeleteConfirm({
+      show: true,
+      type: 'trade',
+      id: tradeId,
+      title: 'Delete Trade Reflection',
+      message: 'Are you sure you want to delete this trade entirely? This will remove all journal notes, emotions, mistakes, screenshots, and the trade record.'
+    })
+  }
+
+  const executeDelete = async () => {
+    const { type, id } = deleteConfirm
+    if (id === null) return
     try {
-      await axios.delete(`${API_BASE}/trades/${tradeId}`)
-      await fetchData()
+      if (type === 'review') {
+        await axios.delete(`${API_BASE}/reviews/${id}`)
+        await fetchReviews()
+      } else {
+        await axios.delete(`${API_BASE}/trades/${id}`)
+        await fetchData()
+      }
     } catch (err) {
-      console.error('Error deleting trade:', err)
+      console.error(`Error deleting ${type}:`, err)
+    } finally {
+      setDeleteConfirm({ show: false, type: 'trade', id: null, title: '', message: '' })
     }
   }
 
@@ -549,6 +580,57 @@ export const Journal = ({ theme, onReview }: JournalProps) => {
                 <span>Save Entry</span>
               </motion.button>
             </div>
+          </motion.div>
+        )}
+
+        {deleteConfirm.show && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className={`w-full max-w-md p-6 rounded-2xl border ${
+                theme === 'dark' 
+                  ? 'bg-zinc-900 border-zinc-800 text-white shadow-2xl' 
+                  : 'bg-white border-zinc-200 text-zinc-900 shadow-2xl'
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-4 text-rose-500">
+                <AlertTriangle size={24} />
+                <h3 className="text-lg font-black uppercase tracking-wider">{deleteConfirm.title}</h3>
+              </div>
+              
+              <p className={`text-sm leading-relaxed mb-6 ${
+                theme === 'dark' ? 'text-zinc-300' : 'text-zinc-650'
+              }`}>
+                {deleteConfirm.message}
+              </p>
+              
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setDeleteConfirm({ show: false, type: 'trade', id: null, title: '', message: '' })}
+                  className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors ${
+                    theme === 'dark' 
+                      ? 'text-zinc-400 hover:text-white hover:bg-zinc-800' 
+                      : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={executeDelete}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-lg hover:shadow-rose-600/20 transition-all"
+                >
+                  Confirm Delete
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

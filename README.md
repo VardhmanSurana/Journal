@@ -125,7 +125,7 @@ graph TD
 ### 1. Clone & Install Dependencies
 
 ```bash
-git clone https://github.com/your-username/delta-journal.git
+git clone https://github.com/VardhmanSurana/Journal.git
 cd delta-journal
 
 # Install backend dependencies

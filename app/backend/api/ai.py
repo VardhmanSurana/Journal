@@ -1,5 +1,5 @@
 import json
-import requests
+from ollama import Client
 from pydantic import BaseModel, Field
 from typing import List
 from api.config import config
@@ -98,37 +98,34 @@ def _analyze_vertex(prompt: str) -> TradeCritique:
     return analysis
 
 
+def _get_ollama_client() -> Client:
+    return Client(host=config.OLLAMA_BASE_URL)
+
+
 def _ensure_ollama_model() -> None:
-    base = config.OLLAMA_BASE_URL.rstrip("/")
+    client = _get_ollama_client()
     model = config.OLLAMA_MODEL
-    tags_resp = requests.get(f"{base}/api/tags", timeout=10)
-    tags_resp.raise_for_status()
-    installed = [m["name"] for m in tags_resp.json().get("models", [])]
+    installed = [m["model"] for m in client.list().get("models", [])]
     if model in installed or f"{model}:latest" in installed:
         return
     print(f"Pulling Ollama model '{model}' (this may take a while)...")
-    pull_resp = requests.post(f"{base}/api/pull", json={"name": model, "stream": False}, timeout=600)
-    pull_resp.raise_for_status()
+    client.pull(model)
     print(f"Ollama model '{model}' pulled successfully.")
 
 
 def _analyze_ollama(prompt: str) -> TradeCritique:
     _ensure_ollama_model()
-    url = f"{config.OLLAMA_BASE_URL.rstrip('/')}/api/chat"
-    payload = {
-        "model": config.OLLAMA_MODEL,
-        "messages": [
+    client = _get_ollama_client()
+    response = client.chat(
+        model=config.OLLAMA_MODEL,
+        messages=[
             {"role": "system", "content": SYSTEM_MSG},
             {"role": "user", "content": prompt},
         ],
-        "stream": False,
-        "format": "json",
-        "options": {"temperature": 0.1},
-    }
-    resp = requests.post(url, json=payload, timeout=60)
-    resp.raise_for_status()
-    data = resp.json()
-    raw = data.get("message", {}).get("content", "")
+        format="json",
+        options={"temperature": 0.1},
+    )
+    raw = response.get("message", {}).get("content", "")
     parsed = json.loads(raw)
     return TradeCritique(**parsed)
 

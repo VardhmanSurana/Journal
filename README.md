@@ -116,7 +116,7 @@ graph TD
 - **Python:** v3.11+ with [uv](https://github.com/astral-sh/uv) package manager
 - **Bun:** v1.3+ ([install guide](https://bun.sh))
 - **API Credentials:** Read-Only API Keys from [Delta Exchange](https://www.delta.exchange/app/account/api)
-- **Ollama (optional):** For local AI analysis — [install Ollama](https://ollama.com)
+- **[Ollama](https://ollama.com) (recommended):** For local AI analysis — runs at `http://localhost:11434`
 
 ---
 
@@ -169,7 +169,7 @@ docker compose up --build -d
 - **Backend API:** `http://localhost:8000/api`
 - **Ollama:** `http://localhost:11434`
 
-> The backend automatically pulls the configured Ollama model on first use when `AI_PROVIDER=ollama`.
+> The backend connects to Ollama at `http://localhost:11434` and pulls the configured model on first use.
 
 ---
 
@@ -179,8 +179,8 @@ Delta Journal supports two AI backends for trade critique:
 
 | Provider | Setup | Model |
 |----------|-------|-------|
-| **Vertex AI** (default) | Set `PROJECT_ID` in `.env` (Google Cloud ADC) | `gemini-2.5-pro` with structured Pydantic output |
-| **Ollama** (local) | Set `AI_PROVIDER=ollama` in `.env` | Configurable via `OLLAMA_MODEL` (default: `llama3.2`) |
+| **Ollama** (default) | No config needed — uses local Ollama at `http://localhost:11434` | Configurable via `OLLAMA_MODEL` |
+| **Vertex AI** | Set `AI_PROVIDER=vertex` and `PROJECT_ID` in `.env` | `gemini-2.5-pro` with structured Pydantic output |
 
 The analysis returns: risk score (1-10), identified pattern, psychological state, mistake list, and actionable suggestions — displayed inside the trade detail modal.
 

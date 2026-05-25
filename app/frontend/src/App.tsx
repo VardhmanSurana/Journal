@@ -18,6 +18,7 @@ import { ThemeProvider, useTheme } from './hooks/useTheme'
 import { API_BASE } from './config/api'
 import { ConnectionPanel } from './components/ConnectionPanel'
 import { normalizeError } from './utils/errorNormalization'
+import { formatDate, formatTime } from './utils/dates'
 
 interface TradeEvent {
   id: number
@@ -153,11 +154,7 @@ function AppContent() {
   const groupedTrades = useMemo(() => {
     const groups: Record<string, Trade[]> = {}
     displayedTrades.forEach(t => {
-      const date = new Date(t.exit_time).toLocaleDateString('en-US', {
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric'
-      })
+      const date = formatDate(t.exit_time, 'long')
       if (!groups[date]) groups[date] = []
       groups[date].push(t)
     })
@@ -364,7 +361,7 @@ function AppContent() {
                                     {trade.symbol}
                                   </div>
                                   <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mt-0.5">
-                                    {new Date(trade.exit_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {formatTime(trade.exit_time)}
                                   </div>
                                 </div>
                               </div>
@@ -466,7 +463,7 @@ function AppContent() {
             } />
             <Route path="/analytics" element={<Analytics trades={trades} summary={summary} theme={theme} />} />
             <Route path="/fees-funding" element={<FeesFunding theme={theme} />} />
-            <Route path="/journal" element={<Journal theme={theme} trades={trades} onReview={(trade) => setReviewingTrade(trade)} />} />
+            <Route path="/journal" element={<Journal theme={theme} onReview={(trade) => setReviewingTrade(trade)} />} />
             <Route path="/maintenance" element={<Maintenance theme={theme} />} />
             <Route path="/import" element={<ImportData theme={theme} />} />
           </Routes>

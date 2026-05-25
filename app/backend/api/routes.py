@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlmodel import Session, select, text
 from typing import List, Dict, Any, Literal
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field
 import shutil
 import uuid
@@ -130,7 +131,7 @@ def get_summary(session: Session = Depends(get_session)):
     daily_pnl_map = {}
 
     for t in trades:
-        date_str = t.exit_time.strftime("%Y-%m-%d")
+        date_str = _utc_to_ist(t.exit_time).strftime("%Y-%m-%d")
         daily_pnl_map[date_str] = daily_pnl_map.get(date_str, 0) + t.net_profit
 
         cumulative += t.net_profit
@@ -373,33 +374,30 @@ def update_trade(trade_id: int, updates: TradeUpdateRequest, session: Session = 
             raise HTTPException(status_code=404, detail="Trade not found")
         
         updates_dict = updates.model_dump(exclude_unset=True)
-        print(f"DEBUG: Updating trade {trade_id} with fields: {list(updates_dict.keys())}")
-        
+
         for field_name, field_value in updates_dict.items():
             if field_name in ["notes", "mistakes", "emotion", "pre_plan"]:
                 setattr(trade, field_name, encrypt_text(field_value))
             else:
                 setattr(trade, field_name, field_value)
-    
-    # Calculate actual risk % if stop loss is set
-    if trade.stop_loss and trade.avg_entry and trade.size:
-        try:
-            risk_per_unit = abs(trade.avg_entry - trade.stop_loss)
-            total_risk_amount = risk_per_unit * trade.size
-            
-            # Fetch total equity for % calculation
-            wallet = fetch_wallet_balance()
-            total_equity = sum(float(w.get("balance", 0)) for w in wallet)
-            
-            if total_equity > 0:
-                trade.actual_risk_pct = round((total_risk_amount / total_equity) * 100, 2)
-        except (TypeError, ValueError):
-            trade.actual_risk_pct = 0.0
+
+        # Calculate actual risk % if stop loss is set
+        if trade.stop_loss and trade.avg_entry and trade.size:
+            try:
+                risk_per_unit = abs(trade.avg_entry - trade.stop_loss)
+                total_risk_amount = risk_per_unit * trade.size
+
+                wallet = fetch_wallet_balance()
+                total_equity = sum(float(w.get("balance", 0)) for w in wallet)
+
+                if total_equity > 0:
+                    trade.actual_risk_pct = round((total_risk_amount / total_equity) * 100, 2)
+            except (TypeError, ValueError):
+                trade.actual_risk_pct = 0.0
 
         session.add(trade)
         session.commit()
         session.refresh(trade)
-        print(f"DEBUG: Trade {trade_id} updated successfully. Notes length: {len(trade.notes) if trade.notes else 0}")
     
     return {"status": "success", "trade_id": trade_id}
 
@@ -438,6 +436,45 @@ def upload_trade_screenshot(
     session.refresh(screenshot)
     
     return {"status": "success", "screenshot": screenshot.model_dump()}
+
+
+@router.delete("/trades/{trade_id}")
+def delete_trade(trade_id: int, session: Session = Depends(get_session)):
+    """Delete a trade and its associated data."""
+    from api.sync import DB_LOCK
+
+    trade = session.get(Trade, trade_id)
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+
+    with DB_LOCK:
+        # Delete associated screenshots (files + DB records)
+        screenshots = session.exec(select(Screenshot).where(Screenshot.trade_id == trade_id)).all()
+        for s in screenshots:
+            path_on_disk = s.image_path.lstrip("/")
+            if os.path.exists(path_on_disk):
+                try:
+                    os.remove(path_on_disk)
+                except Exception as e:
+                    print(f"Error deleting screenshot file {path_on_disk}: {e}")
+            session.delete(s)
+
+        # Delete trade events
+        events = session.exec(select(TradeEvent).where(TradeEvent.trade_id == trade_id)).all()
+        for e in events:
+            session.delete(e)
+
+        # Disassociate fills (keep raw fill data, remove trade link)
+        fills = session.exec(select(Fill).where(Fill.trade_id == trade_id)).all()
+        for f in fills:
+            f.trade_id = None
+            session.add(f)
+
+        # Delete the trade itself
+        session.delete(trade)
+        session.commit()
+
+    return {"status": "deleted", "trade_id": trade_id}
 
 
 @router.delete("/trades/{trade_id}/screenshots/{screenshot_id}")
@@ -729,7 +766,7 @@ def check_alerts(session: Session = Depends(get_session)):
             })
     
     session.commit()
-    return {"alerts": alerts_triggered, "checked_at": datetime.now().isoformat()}
+    return {"alerts": alerts_triggered, "checked_at": datetime.now(timezone.utc).isoformat()}
 
 
 # === Sync with background ===
@@ -746,7 +783,7 @@ def get_economics(session: Session = Depends(get_session)):
     total_rewards = 0.0
     
     for tx in txs:
-        date_str = tx.timestamp.strftime("%Y-%m-%d")
+        date_str = _utc_to_ist(tx.timestamp).strftime("%Y-%m-%d")
         if date_str not in daily_map:
             daily_map[date_str] = {"fees": 0.0, "funding": 0.0, "rewards": 0.0}
         
@@ -988,7 +1025,6 @@ def post_analyze_trade(trade_id: int, session: Session = Depends(get_session)):
 def get_benchmark(symbol: str = "BTC", start_date: str = ""):
     """Fetch benchmark performance (% change from start) using CoinGecko."""
     try:
-        from datetime import datetime, timezone
         if start_date:
             start_ts = int(datetime.strptime(start_date, "%Y-%m-%d").timestamp())
         else:
@@ -1072,6 +1108,59 @@ async def post_import_csv(file: UploadFile = File(...), session: Session = Depen
     }
 
 
+class RawImportRequest(BaseModel):
+    raw_text: str
+
+
+@router.post("/import/raw")
+async def post_import_raw(request: RawImportRequest, session: Session = Depends(get_session)):
+    """Import trades from copy-pasted space-separated Delta Exchange logs."""
+    from api.raw_parser import parse_delta_copy_paste
+    from api.sync import reconstruct_trades_from_db
+
+    parsed_fills = parse_delta_copy_paste(request.raw_text)
+    if not parsed_fills:
+        raise HTTPException(status_code=400, detail="No valid trade executions found in the provided text.")
+
+    new_fills = 0
+    errors = []
+
+    for pf in parsed_fills:
+        try:
+            existing = session.exec(
+                select(Fill).where(Fill.exchange_fill_id == pf["exchange_id"])
+            ).first()
+            if existing:
+                continue
+
+            fill = Fill(
+                exchange_fill_id=pf["exchange_id"],
+                symbol=pf["symbol"],
+                side=pf["side"],
+                price=pf["price"],
+                size=pf["size"],
+                fee=pf["fee"],
+                notional=pf["notional"],
+                timestamp=pf["timestamp"],
+                order_id=pf["order_id"],
+            )
+            session.add(fill)
+            new_fills += 1
+        except Exception as e:
+            errors.append(f"Order {pf['order_id']}: {str(e)}")
+
+    session.commit()
+
+    if new_fills > 0:
+        reconstruct_trades_from_db(session)
+
+    return {
+        "imported": new_fills,
+        "errors": errors[:10],
+        "total_errors": len(errors),
+    }
+
+
 @router.get("/export/trades")
 def export_trades_csv(session: Session = Depends(get_session)):
     """Export all trades as a CSV file."""
@@ -1090,8 +1179,8 @@ def export_trades_csv(session: Session = Depends(get_session)):
     for t in trades:
         writer.writerow([
             t.id, t.symbol, t.direction,
-            t.entry_time.isoformat() if t.entry_time else "",
-            t.exit_time.isoformat() if t.exit_time else "",
+            _utc_to_ist(t.entry_time).isoformat() if t.entry_time else "",
+            _utc_to_ist(t.exit_time).isoformat() if t.exit_time else "",
             t.avg_entry, t.avg_exit, t.size,
             round(t.gross_profit, 4) if t.gross_profit else 0,
             round(t.fees, 4) if t.fees else 0,
@@ -1123,7 +1212,7 @@ def export_monthly_csv(session: Session = Depends(get_session)):
     monthly: dict[str, dict] = defaultdict(lambda: {"trades": 0, "wins": 0, "gross": 0, "fees": 0, "net": 0})
 
     for t in trades:
-        key = t.exit_time.strftime("%Y-%m")
+        key = _utc_to_ist(t.exit_time).strftime("%Y-%m")
         m = monthly[key]
         m["trades"] += 1
         if t.is_winner:
@@ -1147,6 +1236,10 @@ def export_monthly_csv(session: Session = Depends(get_session)):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=delta_journal_monthly.csv"},
     )
+
+
+def _utc_to_ist(dt: datetime) -> datetime:
+    return dt.astimezone(ZoneInfo("Asia/Kolkata"))
 
 
 def _infer_csv_columns(fieldnames: list[str]) -> dict[str, str]:

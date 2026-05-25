@@ -5,6 +5,7 @@ import { API_BASE } from '../../config/api'
 import { useThemeClasses } from '../../utils/theme'
 import { SkeletonLoader } from '../../components/SkeletonLoader'
 import { motion, AnimatePresence } from 'framer-motion'
+import { formatDate } from '../../utils/dates'
 
 interface TradeReview {
   id: number
@@ -17,7 +18,6 @@ interface TradeReview {
 
 interface JournalProps {
   theme: 'dark' | 'light'
-  trades: any[]
   onReview: (trade: any) => void
 }
 
@@ -52,17 +52,30 @@ const itemVariants = {
   }
 }
 
-export const Journal = ({ theme, trades, onReview }: JournalProps) => {
+export const Journal = ({ theme, onReview }: JournalProps) => {
   const [reviews, setReviews] = useState<TradeReview[]>([])
+  const [trades, setTrades] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [editingReview, setEditingReview] = useState<Partial<TradeReview> | null>(null)
   const { bgClass, textClass, cardBgClass, subTextClass } = useThemeClasses(theme)
 
-  const journaledTrades = trades.filter(t => t.notes)
+  const hasJournalData = (t: any) =>
+    t.notes || t.pre_plan || t.strategy || t.emotion || t.session || t.mistakes
+
+  const journaledTrades = trades.filter(hasJournalData)
   const sortedJournaledTrades = [...journaledTrades].sort(
     (a, b) => new Date(b.exit_time).getTime() - new Date(a.exit_time).getTime()
   )
+
+  const fetchTrades = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/trades`)
+      setTrades(res.data)
+    } catch (err) {
+      console.error('Error fetching trades:', err)
+    }
+  }
 
   const fetchReviews = async () => {
     try {
@@ -75,11 +88,15 @@ export const Journal = ({ theme, trades, onReview }: JournalProps) => {
     }
   }
 
+  const fetchData = async () => {
+    await Promise.all([fetchTrades(), fetchReviews()])
+  }
+
   useEffect(() => {
-    fetchReviews()
+    fetchData()
     const interval = setInterval(fetchReviews, 10000)
     return () => clearInterval(interval)
-  }, [trades])
+  }, [])
 
   const handleNewReview = () => {
     setEditingReview({
@@ -125,6 +142,16 @@ export const Journal = ({ theme, trades, onReview }: JournalProps) => {
     }
   }
 
+  const handleDeleteTrade = async (tradeId: number) => {
+    if (!confirm('Are you sure you want to delete this trade entirely? This will remove all journal data, screenshots, and the trade record.')) return
+    try {
+      await axios.delete(`${API_BASE}/trades/${tradeId}`)
+      await fetchData()
+    } catch (err) {
+      console.error('Error deleting trade:', err)
+    }
+  }
+
   const getMoodData = (moodValue: string) => {
     return MOODS.find(m => m.value === moodValue) || MOODS[2]
   }
@@ -152,7 +179,7 @@ export const Journal = ({ theme, trades, onReview }: JournalProps) => {
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {trades.filter(t => !t.notes).slice(0, 6).map(trade => (
+          {trades.filter(t => !hasJournalData(t)).slice(0, 6).map(trade => (
             <motion.button
               key={trade.id}
               onClick={() => onReview(trade)}
@@ -169,7 +196,7 @@ export const Journal = ({ theme, trades, onReview }: JournalProps) => {
                 <div>
                   <div className={`text-sm font-bold ${textClass}`}>{trade.symbol}</div>
                   <div className="text-[10px] text-zinc-500 uppercase font-black tracking-tighter">
-                    {trade.direction} · {new Date(trade.exit_time).toLocaleDateString()}
+                    {trade.direction} · {formatDate(trade.exit_time)}
                   </div>
                 </div>
                 <div className={`text-xs font-bold ${trade.net_profit >= 0 ? 'winner' : 'loser'}`}>
@@ -255,12 +282,7 @@ export const Journal = ({ theme, trades, onReview }: JournalProps) => {
                         )}
                       </div>
                       <div className={`text-xs ${subTextClass} mt-1`}>
-                        Closed · {new Date(trade.exit_time).toLocaleDateString('en-US', { 
-                          weekday: 'long', 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
+                        Closed · {formatDate(trade.exit_time, 'full')}
                       </div>
                     </div>
                   </div>
@@ -279,6 +301,12 @@ export const Journal = ({ theme, trades, onReview }: JournalProps) => {
                       className={`p-2 rounded-lg ${cardBgClass} transition-colors ${theme === 'dark' ? 'hover:bg-zinc-700 text-zinc-400' : 'hover:bg-zinc-200 text-zinc-600 shadow-sm'}`}
                     >
                       <Edit2 size={16} />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteTrade(trade.id)}
+                      className={`p-2 rounded-lg ${cardBgClass} transition-colors ${theme === 'dark' ? 'hover:bg-rose-500/20 text-rose-400' : 'hover:bg-rose-100 text-rose-500'}`}
+                    >
+                      <Trash2 size={16} />
                     </button>
                   </div>
                 </div>
@@ -312,12 +340,18 @@ export const Journal = ({ theme, trades, onReview }: JournalProps) => {
                     <div className="grid grid-cols-2 gap-4">
                       {trade.emotion && (
                         <div>
-                          <div className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-1">Emotion</div>
-                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                            theme === 'dark' ? 'bg-purple-500/10 text-purple-400' : 'bg-purple-50 text-purple-700'
-                          }`}>
-                            {trade.emotion}
-                          </span>
+                          <div className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-1.5">Emotion</div>
+                          <div className="flex flex-wrap gap-1">
+                            {trade.emotion.split(',').map((e: string) => (
+                              <span key={e} className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${
+                                theme === 'dark' 
+                                  ? 'bg-purple-500/10 text-purple-400 border border-purple-500/10' 
+                                  : 'bg-purple-50 text-purple-700 border border-purple-100'
+                              }`}>
+                                {e.trim()}
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       )}
                       
@@ -540,12 +574,7 @@ export const Journal = ({ theme, trades, onReview }: JournalProps) => {
                     </div>
                     <div>
                       <div className={`text-lg font-semibold ${textClass}`}>
-                        {new Date(review.date_str).toLocaleDateString('en-US', { 
-                          weekday: 'long', 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
+                        {formatDate(review.date_str, 'full')}
                       </div>
                       <div className="flex items-center gap-2 mt-1">
                         <MoodIcon className={moodData.color} size={14} />

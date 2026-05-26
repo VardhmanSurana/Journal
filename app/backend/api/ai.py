@@ -1,5 +1,5 @@
 import json
-from ollama import Client
+from ollama import Client, AsyncClient
 from pydantic import BaseModel, Field
 from typing import List
 from api.config import config
@@ -78,9 +78,16 @@ def _format_prompt(trade: dict) -> str:
 
 def _get_ollama_client() -> Client:
     import os
-    # Read host from environment OLLAMA_HOST or fallback to standard library auto-resolution
-    host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    # Read host from environment OLLAMA_HOST or OLLAMA_BASE_URL or fallback to standard library auto-resolution
+    host = os.getenv("OLLAMA_HOST") or os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434"
     return Client(host=host)
+
+
+def _get_async_ollama_client() -> AsyncClient:
+    import os
+    # Read host from environment OLLAMA_HOST or OLLAMA_BASE_URL or fallback to standard library auto-resolution
+    host = os.getenv("OLLAMA_HOST") or os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434"
+    return AsyncClient(host=host)
 
 
 def _ensure_ollama_model() -> None:

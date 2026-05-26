@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import axios from 'axios'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceDot } from 'recharts'
 import { X, TrendingUp, TrendingDown, Calendar, Clock, DollarSign, ArrowRight, Target, BookOpen, Image as ImageIcon, BarChart3, Sparkles } from 'lucide-react'
@@ -73,9 +73,25 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
     if (trade.symbol) fetchOhlc()
   }, [trade.symbol, trade.entry_time, trade.exit_time, chartResolution])
 
-  const fetchAiAnalysis = async () => {
+  const eventSourceRef = useRef<EventSource | null>(null)
+  const [pullProgress, setPullProgress] = useState<{
+    status: string
+    completed: number
+    total: number
+    percent: number
+  } | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close()
+      }
+    }
+  }, [])
+
+  const runActualAnalysis = async () => {
     setAiLoading(true)
-    setAiError('')
+    setPullProgress(null)
     try {
       const res = await axios.post(`${API_BASE}/analyze-trade/${trade.id}`)
       if (res.data?.error) {
@@ -84,10 +100,88 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
       } else {
         setAiAnalysis(res.data)
       }
-    } catch {
-      setAiError('AI analysis unavailable')
+    } catch (err: any) {
+      setAiError(err.response?.data?.detail || 'AI analysis failed')
       setAiAnalysis(null)
     } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const fetchAiAnalysis = async () => {
+    setAiLoading(true)
+    setAiError('')
+    setPullProgress(null)
+    try {
+      // 1. Check if model is downloaded
+      const statusRes = await axios.get(`${API_BASE}/ai/model-status`)
+      if (statusRes.data?.available && !statusRes.data?.installed) {
+        // Model is missing! We need to pull it and stream progress.
+        setPullProgress({
+          status: 'Starting download...',
+          completed: 0,
+          total: 0,
+          percent: 0
+        })
+        
+        // Open an EventSource to pull the model
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close()
+        }
+        
+        const eventSource = new EventSource(`${API_BASE}/ai/pull-model`)
+        eventSourceRef.current = eventSource
+        
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            if (data.error || data.status === 'error') {
+              setAiError(`Download failed: ${data.error || 'Unknown error'}`)
+              setPullProgress(null)
+              setAiLoading(false)
+              eventSource.close()
+            } else if (data.status === 'success') {
+              setPullProgress({
+                status: 'Success! Running analysis...',
+                completed: 100,
+                total: 100,
+                percent: 100
+              })
+              eventSource.close()
+              // Auto-trigger analysis once successful
+              runActualAnalysis()
+            } else {
+              const status = data.status || 'Downloading...'
+              const completed = data.completed || 0
+              const total = data.total || 0
+              const percent = total > 0 ? Math.round((completed / total) * 100) : 0
+              setPullProgress({
+                status,
+                completed,
+                total,
+                percent
+              })
+            }
+          } catch (err) {
+            console.error('Error parsing SSE event:', err)
+          }
+        }
+
+        eventSource.onerror = (err) => {
+          console.error('EventSource error:', err)
+          setAiError('Connection to download stream lost')
+          setPullProgress(null)
+          setAiLoading(false)
+          eventSource.close()
+        }
+        return // Let the pull run
+      }
+      
+      // If already installed or SSE is unavailable, run analysis directly
+      await runActualAnalysis()
+    } catch (err: any) {
+      setAiError(err.response?.data?.detail || 'AI analysis unavailable')
+      setAiAnalysis(null)
       setAiLoading(false)
     }
   }
@@ -179,8 +273,37 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
                 <div className={`text-xs mb-1 flex items-center gap-1 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
                   <ArrowRight size={12} className={theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'} /> Entry Price
                 </div>
-                <div className={`text-lg font-bold font-mono ${theme === 'dark' ? 'text-white' : 'text-zinc-900'}`}>
-                  {format(trade.avg_entry)}
+                <div className={`font-bold font-mono ${theme === 'dark' ? 'text-white' : 'text-zinc-900'}`}>
+                  {(() => {
+                    const entrySide = trade.direction === 'long' ? 'buy' : 'sell'
+                    const entryFills = (trade.fills || []).filter((f: any) => f.side === entrySide)
+                    if (entryFills.length > 1) {
+                      return (
+                        <div className="space-y-1 my-1">
+                          {entryFills.map((f: any, i: number) => (
+                            <div key={i} className={`text-[11px] flex justify-between gap-3 border-b pb-1 last:border-0 ${
+                              theme === 'dark' ? 'border-zinc-800/30' : 'border-zinc-200/50'
+                            }`}>
+                              <div className="flex flex-col">
+                                <span className="text-zinc-500 font-medium">{f.size} units @</span>
+                                <span className={theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}>{format(f.price)}</span>
+                              </div>
+                              <div className="flex flex-col items-end">
+                                <span className="text-[9px] text-zinc-500 uppercase font-black">{i === 0 ? 'Entry' : 'Add-on'}</span>
+                              </div>
+                            </div>
+                          ))}
+                          <div className={`pt-1 text-[9px] flex justify-between uppercase font-black tracking-tighter ${
+                            theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'
+                          }`}>
+                            <span>Effective Avg</span>
+                            <span>{format(trade.avg_entry)}</span>
+                          </div>
+                        </div>
+                      )
+                    }
+                    return <span className="text-lg">{format(trade.avg_entry)}</span>
+                  })()}
                 </div>
                 <div className="text-xs text-zinc-500 mt-1 flex justify-between">
                   <span>Size: {trade.size}</span>
@@ -196,41 +319,45 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
                     <ArrowRight size={12} className="text-emerald-500 transform rotate-180" /> Exit Price
                   </div>
                   <div className={`font-bold font-mono ${theme === 'dark' ? 'text-white' : 'text-zinc-900'}`}>
-                    {trade.events && trade.events.filter((e: any) => e.event_type.includes('EXIT')).length > 1 ? (
-                      <div className="space-y-1 my-1">
-                        {trade.events.filter((e: any) => e.event_type.includes('EXIT')).map((e: any, i: number) => {
-                          const avgEntryNotionalPerUnit = trade.entry_notional / trade.size
-                          const exitPnl = trade.direction === 'long' 
-                            ? (e.notional - (avgEntryNotionalPerUnit * e.size))
-                            : ((avgEntryNotionalPerUnit * e.size) - e.notional)
-                          
-                          return (
-                            <div key={i} className={`text-[11px] flex justify-between gap-3 border-b pb-1 last:border-0 ${
-                              theme === 'dark' ? 'border-zinc-800/30' : 'border-zinc-200/50'
-                            }`}>
-                              <div className="flex flex-col">
-                                <span className="text-zinc-500 font-medium">{e.size} units @</span>
-                                <span className={theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}>{format(e.price)}</span>
-                              </div>
-                              <div className="flex flex-col items-end">
-                                <span className="text-[9px] text-zinc-500 uppercase font-black">P&L</span>
-                                <div className={`font-bold ${exitPnl >= 0 ? 'winner' : 'loser'}`}>
-                                  {format(Math.abs(exitPnl))}
+                    {(() => {
+                      const exitSide = trade.direction === 'long' ? 'sell' : 'buy'
+                      const exitFills = (trade.fills || []).filter((f: any) => f.side === exitSide)
+                      if (exitFills.length > 1) {
+                        const avgEntryNotionalPerUnit = trade.entry_notional / trade.size
+                        return (
+                          <div className="space-y-1 my-1">
+                            {exitFills.map((f: any, i: number) => {
+                              const exitPnl = trade.direction === 'long'
+                                ? (f.notional - (avgEntryNotionalPerUnit * f.size))
+                                : ((avgEntryNotionalPerUnit * f.size) - f.notional)
+                              return (
+                                <div key={i} className={`text-[11px] flex justify-between gap-3 border-b pb-1 last:border-0 ${
+                                  theme === 'dark' ? 'border-zinc-800/30' : 'border-zinc-200/50'
+                                }`}>
+                                  <div className="flex flex-col">
+                                    <span className="text-zinc-500 font-medium">{f.size} units @</span>
+                                    <span className={theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}>{format(f.price)}</span>
+                                  </div>
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-[9px] text-zinc-500 uppercase font-black">P&L</span>
+                                    <div className={`font-bold ${exitPnl >= 0 ? 'winner' : 'loser'}`}>
+                                      {format(Math.abs(exitPnl))}
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
+                              )
+                            })}
+                            <div className={`pt-1 text-[9px] flex justify-between uppercase font-black tracking-tighter ${
+                              theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'
+                            }`}>
+                              <span>Effective Avg</span>
+                              <span>{format(trade.avg_exit)}</span>
                             </div>
-                          )
-                        })}
-                        <div className={`pt-1 text-[9px] flex justify-between uppercase font-black tracking-tighter ${
-                          theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'
-                        }`}>
-                          <span>Effective Avg</span>
-                          <span>{format(trade.avg_exit)}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-lg">{format(trade.avg_exit)}</span>
-                    )}
+                          </div>
+                        )
+                      }
+                      return <span className="text-lg">{format(trade.avg_exit)}</span>
+                    })()}
                   </div>
                 </div>
                 <div className="text-xs text-zinc-500 mt-1">
@@ -514,7 +641,27 @@ export const TradeDetailModal = ({ trade, theme = 'dark', onClose, onReview }: T
                     <Sparkles size={14} className="inline mr-2" />Analyze with AI
                   </button>
                 )}
-                {aiLoading && (
+                {aiLoading && pullProgress && (
+                  <div className="space-y-3 py-4">
+                    <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                      <span>{pullProgress.status}</span>
+                      <span>{pullProgress.percent}%</span>
+                    </div>
+                    <div className={`h-2 rounded-full overflow-hidden ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'}`}>
+                      <div 
+                        className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${pullProgress.percent}%` }}
+                      />
+                    </div>
+                    {pullProgress.total > 0 && (
+                      <div className="flex justify-between text-[10px] text-zinc-500">
+                        <span>{(pullProgress.completed / (1024 * 1024)).toFixed(1)} MB</span>
+                        <span>{(pullProgress.total / (1024 * 1024)).toFixed(1)} MB</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {aiLoading && !pullProgress && (
                   <div className="flex items-center gap-3 py-4">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-zinc-500" />
                     <span className={`text-xs italic ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>

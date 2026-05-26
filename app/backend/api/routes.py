@@ -66,9 +66,11 @@ def get_trades(session: Session = Depends(get_session)):
     for t in trades:
         events = session.exec(select(TradeEvent).where(TradeEvent.trade_id == t.id).order_by(TradeEvent.timestamp.asc())).all()
         screenshots = session.exec(select(Screenshot).where(Screenshot.trade_id == t.id)).all()
+        fills = session.exec(select(Fill).where(Fill.trade_id == t.id).order_by(Fill.timestamp.asc())).all()
         t_dict = t.model_dump()
         t_dict['events'] = [e.model_dump() for e in events]
         t_dict['screenshots'] = [s.model_dump() for s in screenshots]
+        t_dict['fills'] = [f.model_dump() for f in fills]
         # Decrypt sensitive columns for the UI
         t_dict['notes'] = decrypt_text(t.notes)
         t_dict['mistakes'] = decrypt_text(t.mistakes)
@@ -1004,6 +1006,64 @@ def get_ohlc(symbol: str, resolution: str = "1h", start: int = 0, end: int = 0):
     except Exception as e:
         print(f"Warning: OHLC fetch failed for {symbol}: {e}")
         return []
+
+
+@router.get("/ai/model-status")
+def get_model_status():
+    """Check if the configured Ollama model is downloaded/installed."""
+    from api.ai import _get_ollama_client
+    from api.config import config
+    try:
+        client = _get_ollama_client()
+        model = config.OLLAMA_MODEL
+        installed_models = client.list().get("models", [])
+        installed_names = [m["model"] for m in installed_models]
+        # Check both tagless name and explicit :latest or other configurations
+        is_installed = model in installed_names or f"{model}:latest" in installed_names
+        return {
+            "model": model,
+            "installed": is_installed,
+            "available": True
+        }
+    except Exception as e:
+        return {
+            "model": config.OLLAMA_MODEL,
+            "installed": False,
+            "available": False,
+            "error": str(e)
+        }
+
+
+@router.get("/ai/pull-model")
+async def get_pull_model():
+    """Stream pulling of the configured Ollama model via Server-Sent Events."""
+    from fastapi.responses import StreamingResponse
+    from api.ai import _get_async_ollama_client
+    from api.config import config
+    import json
+
+    model = config.OLLAMA_MODEL
+
+    async def event_generator():
+        try:
+            client = _get_async_ollama_client()
+            stream = await client.pull(model=model, stream=True)
+            async for chunk in stream:
+                # chunk.model_dump_json() produces standard JSON containing status, completed, total, etc.
+                yield f"data: {chunk.model_dump_json()}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e), 'status': 'error'})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 @router.post("/analyze-trade/{trade_id}")

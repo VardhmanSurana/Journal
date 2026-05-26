@@ -2,7 +2,10 @@ services:
   ollama:
     image: ollama/ollama:latest
     ports:
-      - "11434:11434"
+      # Host port 11435 avoids conflict with native Ollama (which uses 11434).
+      # Inside Docker the container still listens on 11434 — backend reaches it
+      # via the Docker network at ollama:11434 with no host port involved.
+      - "11435:11434"
     volumes:
       - ollama-data:/root/.ollama
     restart: unless-stopped
@@ -19,6 +22,8 @@ services:
     env_file:
       - .env
     environment:
+      # Always use the Docker-internal address — works whether or not
+      # the user also has a native Ollama running on the host.
       - OLLAMA_BASE_URL=http://ollama:11434
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
@@ -34,7 +39,7 @@ services:
       args:
         - VITE_API_URL=http://localhost:8000/api
     ports:
-      - "5173:80"
+      - "5173:5173"
     depends_on:
       - backend
     restart: unless-stopped

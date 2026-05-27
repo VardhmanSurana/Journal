@@ -239,14 +239,48 @@ def fetch_wallet_balance() -> list[dict]:
     return data.get("result", [])
 
 
-def fetch_positions(product_id: int | None = None) -> list[dict]:
+def fetch_positions(product_id: int | None = None, underlying_asset_symbol: str | None = None) -> list[dict]:
     """
     Fetch current open positions.
     Returns: size, entry_price, mark_price, unrealized_pnl, margin_used, leverage per product.
     """
+    # If no parameters are provided, dynamically fetch for all common and traded assets
+    # to avoid the mandatory parameter validation error from Delta Exchange API.
+    if not product_id and not underlying_asset_symbol:
+        assets = ["BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "AVAX", "MATIC"]
+        try:
+            import sqlite3
+            conn = sqlite3.connect("app.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT symbol FROM trade")
+            symbols = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            for s in symbols:
+                asset = s
+                for suffix in ["USD", "-perpetual", "USDT"]:
+                    if asset.endswith(suffix):
+                        asset = asset[:-len(suffix)]
+                if asset and asset not in assets:
+                    assets.append(asset)
+        except Exception:
+            pass
+
+        results = []
+        for asset in assets:
+            try:
+                data = _get("/positions", {"underlying_asset_symbol": asset})
+                res = data.get("result", [])
+                if res:
+                    results.extend(res)
+            except Exception:
+                continue
+        return results
+
     params = {}
     if product_id:
         params["product_id"] = product_id
+    if underlying_asset_symbol:
+        params["underlying_asset_symbol"] = underlying_asset_symbol
     data = _get("/positions", params)
     return data.get("result", [])
 

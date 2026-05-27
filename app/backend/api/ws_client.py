@@ -25,13 +25,13 @@ ws_data: Dict[str, Any] = {
 }
 ws_lock = threading.Lock()
 
-_WS_URL = "wss://ws.india.delta.exchange/v2"
+_WS_URL = "wss://socket.india.delta.exchange" if config.REGION == "india" else "wss://socket.delta.exchange"
 
 _COMMON_SYMBOLS = ["BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "ADAUSD", "DOGEUSD", "AVAXUSD", "MATICUSD", "DOTUSD", "LINKUSD"]
 
 
 def _sign(timestamp: str) -> str:
-    message = timestamp
+    message = "GET" + timestamp + "/live"
     return hmac.new(
         config.READ_ONLY_SECRET.encode(),
         message.encode(),
@@ -145,7 +145,7 @@ async def __authenticate(ws) -> None:
     timestamp = str(int(time.time()))
     signature = _sign(timestamp)
     auth_msg = {
-        "type": "auth",
+        "type": "key-auth",
         "payload": {
             "api-key": config.READ_ONLY_KEY,
             "signature": signature,

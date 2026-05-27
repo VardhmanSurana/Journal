@@ -457,7 +457,7 @@ export const Journal = ({ theme, onReview }: JournalProps) => {
           >
             <div className="flex items-center justify-between mb-6">
               <h3 className={`text-lg font-semibold ${textClass}`}>
-                {editingReview.id ? 'Edit Entry' : 'New Entry'}
+                {editingReview.id ? 'Edit Daily Review' : 'New Daily Review'}
               </h3>
               <button onClick={() => { setIsEditing(false); setEditingReview(null) }} className={`p-2 rounded-lg ${theme === 'dark' ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`}>
                 <X size={20} className="text-zinc-400" />
@@ -577,7 +577,7 @@ export const Journal = ({ theme, onReview }: JournalProps) => {
                 }`}
               >
                 <Save size={18} />
-                <span>Save Entry</span>
+                <span>Save Review</span>
               </motion.button>
             </div>
           </motion.div>
@@ -635,16 +635,41 @@ export const Journal = ({ theme, onReview }: JournalProps) => {
         )}
       </AnimatePresence>
 
-      <motion.div 
-        variants={containerVariants}
-        initial="hidden"
-        animate="show"
-        className="space-y-4"
-      >
+      <div className="space-y-4 pt-6">
+        <div className="flex items-center justify-between">
+          <h3 className={`text-sm font-black uppercase tracking-widest ${subTextClass}`}>
+            Daily Journal Reflections
+          </h3>
+          <motion.button
+            onClick={handleNewReview}
+            whileHover={{ scale: 1.02, y: -1 }}
+            whileTap={{ scale: 0.98 }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
+              theme === 'dark'
+                ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700'
+                : 'bg-white hover:bg-zinc-50 text-zinc-650 border border-zinc-200'
+            }`}
+          >
+            <Plus size={14} />
+            <span>Write Daily Review</span>
+          </motion.button>
+        </div>
+
         {reviews.length === 0 ? (
-          null
+          <div className={`${bgClass} rounded-xl border p-12 text-center ${
+            theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'
+          }`}>
+            <BookOpen size={40} className={`mx-auto mb-4 ${subTextClass}`} />
+            <p className={`${subTextClass}`}>No daily reviews recorded yet. Click above to write your first daily reflection!</p>
+          </div>
         ) : (
-          reviews.map(review => {
+          <motion.div 
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+            className="space-y-4"
+          >
+          {reviews.map(review => {
             const moodData = getMoodData(review.mood)
             const MoodIcon = moodData.icon
             return (
@@ -716,9 +741,10 @@ export const Journal = ({ theme, onReview }: JournalProps) => {
                 </div>
               </motion.div>
             )
-          })
+          })}
+          </motion.div>
         )}
-      </motion.div>
+      </div>
     </div>
   )
 }

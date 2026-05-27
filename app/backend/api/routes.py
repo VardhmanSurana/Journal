@@ -230,7 +230,7 @@ def get_summary(session: Session = Depends(get_session)):
 
 
 @router.get("/positions")
-def get_positions():
+def get_positions(session: Session = Depends(get_session)):
     """Get current open positions with unrealized P&L.
     Uses WebSocket real-time data as primary source, falls back to REST API."""
     positions = ws_client.get_positions()
@@ -240,35 +240,82 @@ def get_positions():
         from api.client import fetch_positions as rest_positions, fetch_tickers as rest_tickers
 
         common_assets = ["BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "AVAX", "MATIC"]
+        # Add dynamic assets from historical trades in database
+        try:
+            db_symbols = session.exec(select(Trade.symbol)).all()
+            for s in db_symbols:
+                asset = s
+                for suffix in ["USD", "-perpetual", "USDT"]:
+                    if asset.endswith(suffix):
+                        asset = asset[:-len(suffix)]
+                if asset and asset not in common_assets:
+                    common_assets.append(asset)
+        except Exception as e:
+            print(f"Error querying db symbols for positions REST fallback: {e}")
+
         for asset in common_assets:
             try:
-                p = rest_positions(asset)
+                # pass underlying_asset_symbol
+                p = rest_positions(underlying_asset_symbol=asset)
                 if p:
                     positions.extend(p)
-            except Exception:
+            except Exception as e:
+                print(f"Error fetching REST positions for {asset}: {e}")
                 continue
 
         if not tickers:
             try:
-                for t in rest_tickers(",".join(common_assets)):
+                t_list = rest_tickers(",".join(common_assets))
+                for t in t_list:
                     tickers[t.get("symbol")] = t
-            except Exception:
+            except Exception as e:
+                print(f"Error fetching REST tickers: {e}")
                 pass
 
     result = []
     for pos in positions:
         symbol = pos.get("product_symbol") or pos.get("symbol", "")
-        ticker = tickers.get(symbol, {})
+        ticker = tickers.get(symbol)
+        
+        # If the ticker is missing from WS cache, fetch it dynamically via REST API
+        if not ticker:
+            try:
+                from api.client import fetch_tickers as rest_tickers
+                asset = symbol
+                for suffix in ["USD", "-perpetual", "USDT"]:
+                    if asset.endswith(suffix):
+                        asset = asset[:-len(suffix)]
+                t_list = rest_tickers(asset)
+                if t_list:
+                    ticker = t_list[0]
+                    tickers[symbol] = ticker
+            except Exception as e:
+                print(f"Error fetching dynamic ticker for {symbol}: {e}")
+
+        if not ticker:
+            ticker = {}
+
+        # Calculate unrealized P&L if not provided (REST fallback has size/entry_price but lacks mark-to-market calculations)
+        u_pnl = pos.get("unrealized_pnl")
+        size = float(pos.get("size", 0))
+        entry_price = float(pos.get("entry_price", 0))
+        mark_price = float(ticker.get("mark_price", pos.get("mark_price", 0)))
+        
+        if u_pnl is not None:
+            unrealized_pnl = float(u_pnl)
+        else:
+            contract_value = float(ticker.get("contract_value", 1.0))
+            unrealized_pnl = size * (mark_price - entry_price) * contract_value
 
         result.append({
             "symbol": symbol,
-            "size": float(pos.get("size", 0)),
-            "entry_price": float(pos.get("entry_price", 0)),
-            "mark_price": float(ticker.get("mark_price", pos.get("mark_price", 0))),
-            "unrealized_pnl": float(pos.get("unrealized_pnl", 0)),
+            "size": size,
+            "entry_price": entry_price,
+            "mark_price": mark_price,
+            "unrealized_pnl": unrealized_pnl,
             "margin_used": float(pos.get("margin_used", 0)),
             "leverage": float(pos.get("leverage", 1)),
-            "side": pos.get("side", ""),
+            "side": pos.get("side", "short" if size < 0 else "long"),
             "liq_price": float(pos.get("liq_price", 0)),
             "funding_rate": float(ticker.get("funding_rate", 0)),
         })

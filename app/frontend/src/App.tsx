@@ -82,7 +82,6 @@ function AppContent() {
   const [filteredTrades, setFilteredTrades] = useState<Trade[]>([])
   const [summary, setSummary] = useState<any>(null)
   const [positions, setPositions] = useState<any[]>([])
-  const [news, setNews] = useState<any[]>([])
   const [health, setHealth] = useState<ConnectionHealth | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -98,18 +97,16 @@ function AppContent() {
 
   const fetchData = async () => {
     try {
-      const [tradesRes, summaryRes, positionsRes, newsRes, healthRes] = await Promise.all([
+      const [tradesRes, summaryRes, positionsRes, healthRes] = await Promise.all([
         axios.get(`${API_BASE}/trades`),
         axios.get(`${API_BASE}/summary`),
         axios.get(`${API_BASE}/positions`),
-        axios.get(`${API_BASE}/news`),
         axios.get(`${API_BASE}/health/connection`)
       ])
       setTrades(tradesRes.data)
       setFilteredTrades(tradesRes.data)
       setSummary(summaryRes.data)
       setPositions(positionsRes.data)
-      setNews(newsRes.data)
       setHealth(healthRes.data)
     } catch (err) {
       console.error('Error fetching data:', err)
@@ -228,7 +225,7 @@ function AppContent() {
 
         <div className="flex-1 overflow-y-auto p-8 pt-4">
           <Routes>
-            <Route path="/" element={<Dashboard summary={summary} allTrades={trades} positions={positions} news={news} theme={theme} />} />
+            <Route path="/" element={<Dashboard summary={summary} allTrades={trades} positions={positions} theme={theme} onSelectTrade={setSelectedTrade} />} />
             <Route path="/trades" element={
               <div className="space-y-8 animate-fadeIn">
                 {/* 1. Summary Cards Grid */}

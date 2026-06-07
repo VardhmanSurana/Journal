@@ -138,16 +138,7 @@ class Screenshot(SQLModel, table=True):
     chart_type: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-class DailyReview(SQLModel, table=True):
-    """5. DAILY REVIEWS TABLE"""
-    __tablename__ = "daily_reviews"
-    
-    id: Optional[int] = Field(default=None, primary_key=True)
-    date_str: str = Field(unique=True, index=True) # YYYY-MM-DD
-    mood: Optional[str] = None
-    discipline_score: Optional[int] = None
-    mistakes: Optional[str] = None
-    lessons: Optional[str] = None
+
 
 class PriceAlert(SQLModel, table=True):
     """6. PRICE ALERTS TABLE"""

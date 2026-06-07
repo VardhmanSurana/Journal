@@ -20,8 +20,8 @@ interface DashboardProps {
   summary: any
   allTrades: any[]
   positions: any[]
-  news: any[]
   theme?: 'dark' | 'light'
+  onSelectTrade?: (trade: any) => void
 }
 
 const containerVariants = {
@@ -47,7 +47,7 @@ const itemVariants = {
   }
 }
 
-export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' }: DashboardProps) => {
+export const Dashboard = ({ summary, allTrades, positions, theme = 'dark', onSelectTrade }: DashboardProps) => {
   const { format, currency, rate, convert } = useCurrency()
   const chartTheme = useChartTheme(theme)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -405,10 +405,13 @@ export const Dashboard = ({ summary, allTrades, positions, news, theme = 'dark' 
               const isLong = (t.direction || 'long').toLowerCase() === 'long' || (t.direction || 'long').toLowerCase() === 'buy';
               return (
                 <div 
-                  key={t.id} 
+                  key={t.id}
+                  onClick={() => onSelectTrade?.(t)}
                   className={`flex justify-between items-center p-4 rounded-xl transition-all duration-200 ${
+                    onSelectTrade ? 'cursor-pointer' : ''
+                  } ${
                     theme === 'dark' 
-                      ? 'bg-zinc-900/20 hover:bg-zinc-900/60' 
+                      ? 'bg-zinc-900/20 hover:bg-zinc-900/60 hover:ring-1 hover:ring-zinc-700' 
                       : 'bg-zinc-50 border border-zinc-100 hover:bg-white hover:border-zinc-300 hover:shadow-sm'
                   }`}
                 >

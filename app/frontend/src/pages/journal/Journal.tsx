@@ -53,20 +53,15 @@ const itemVariants = {
 }
 
 export const Journal = ({ theme, onReview }: JournalProps) => {
-  const [reviews, setReviews] = useState<TradeReview[]>([])
   const [trades, setTrades] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [isEditing, setIsEditing] = useState(false)
-  const [editingReview, setEditingReview] = useState<Partial<TradeReview> | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{
     show: boolean
-    type: 'trade' | 'review'
     id: number | null
     title: string
     message: string
   }>({
     show: false,
-    type: 'trade',
     id: null,
     title: '',
     message: ''
@@ -87,104 +82,37 @@ export const Journal = ({ theme, onReview }: JournalProps) => {
       setTrades(res.data)
     } catch (err) {
       console.error('Error fetching trades:', err)
-    }
-  }
-
-  const fetchReviews = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/reviews`)
-      setReviews(res.data)
-    } catch (err) {
-      console.error('Error fetching reviews:', err)
     } finally {
       setLoading(false)
     }
   }
 
-  const fetchData = async () => {
-    await Promise.all([fetchTrades(), fetchReviews()])
-  }
-
   useEffect(() => {
-    fetchData()
-    const interval = setInterval(fetchReviews, 10000)
+    fetchTrades()
+    const interval = setInterval(fetchTrades, 10000)
     return () => clearInterval(interval)
   }, [])
-
-  const handleNewReview = () => {
-    setEditingReview({
-      date_str: new Date().toISOString().split('T')[0],
-      mood: 'neutral',
-      discipline_score: 5,
-      mistakes: '',
-      lessons: ''
-    })
-    setIsEditing(true)
-  }
-
-  const handleSave = async () => {
-    if (!editingReview) return
-
-    try {
-      const res = await axios.post(`${API_BASE}/reviews`, {
-        date_str: editingReview.date_str,
-        mood: editingReview.mood,
-        discipline_score: editingReview.discipline_score,
-        mistakes: editingReview.mistakes,
-        lessons: editingReview.lessons
-      })
-      
-      console.log('Save response:', res.data)
-      await fetchReviews()
-      setIsEditing(false)
-      setEditingReview(null)
-      alert('Journal entry saved successfully!')
-    } catch (err: any) {
-      console.error('Error saving review:', err)
-      alert(`Failed to save journal: ${err.response?.data?.detail || err.message}`)
-    }
-  }
-
-  const handleDelete = (id: number) => {
-    setDeleteConfirm({
-      show: true,
-      type: 'review',
-      id,
-      title: 'Delete Journal Entry',
-      message: 'Are you sure you want to delete this journal entry reflection? This action cannot be undone.'
-    })
-  }
 
   const handleDeleteTrade = (tradeId: number) => {
     setDeleteConfirm({
       show: true,
-      type: 'trade',
       id: tradeId,
-      title: 'Delete Trade Reflection',
-      message: 'Are you sure you want to delete this trade entirely? This will remove all journal notes, emotions, mistakes, screenshots, and the trade record.'
+      title: 'Delete Trade Review',
+      message: 'Are you sure you want to delete this trade entirely? This will remove all review notes, emotions, mistakes, screenshots, and the trade record.'
     })
   }
 
   const executeDelete = async () => {
-    const { type, id } = deleteConfirm
+    const { id } = deleteConfirm
     if (id === null) return
     try {
-      if (type === 'review') {
-        await axios.delete(`${API_BASE}/reviews/${id}`)
-        await fetchReviews()
-      } else {
-        await axios.delete(`${API_BASE}/trades/${id}`)
-        await fetchData()
-      }
+      await axios.delete(`${API_BASE}/trades/${id}`)
+      await fetchTrades()
     } catch (err) {
-      console.error(`Error deleting ${type}:`, err)
+      console.error('Error deleting trade:', err)
     } finally {
-      setDeleteConfirm({ show: false, type: 'trade', id: null, title: '', message: '' })
+      setDeleteConfirm({ show: false, id: null, title: '', message: '' })
     }
-  }
-
-  const getMoodData = (moodValue: string) => {
-    return MOODS.find(m => m.value === moodValue) || MOODS[2]
   }
 
   if (loading) {
@@ -251,13 +179,13 @@ export const Journal = ({ theme, onReview }: JournalProps) => {
         </div>
       </div>
 
-      {/* Journaled Trade Reflections Section */}
+      {/* Trade Reviews Section */}
       <div className="space-y-4 pt-2">
         <div className="flex items-center justify-between">
           <h3 className={`text-sm font-black uppercase tracking-widest ${subTextClass}`}>
-            Journaled Trade Reflections
+            Trade Reviews
           </h3>
-          <span className="text-[10px] text-zinc-500">{sortedJournaledTrades.length} entries saved</span>
+          <span className="text-[10px] text-zinc-500">{sortedJournaledTrades.length} reviews saved</span>
         </div>
         
         {sortedJournaledTrades.length === 0 ? (
@@ -265,7 +193,7 @@ export const Journal = ({ theme, onReview }: JournalProps) => {
             theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'
           }`}>
             <BookOpen size={40} className={`mx-auto mb-4 ${subTextClass}`} />
-            <p className={`${subTextClass}`}>No trades journaled yet. Select a pending trade above to write your first reflection entry!</p>
+            <p className={`${subTextClass}`}>No trade reviews yet. Select a pending trade above to write your first review!</p>
           </div>
         ) : (
           <motion.div 
@@ -447,142 +375,6 @@ export const Journal = ({ theme, onReview }: JournalProps) => {
       </div>
 
       <AnimatePresence>
-        {isEditing && editingReview && (
-          <motion.div 
-            initial={{ opacity: 0, height: 0, y: -15 }}
-            animate={{ opacity: 1, height: "auto", y: 0 }}
-            exit={{ opacity: 0, height: 0, y: -15 }}
-            transition={{ type: "spring", stiffness: 200, damping: 24 }}
-            className={`${bgClass} rounded-xl border p-6 overflow-hidden`}
-          >
-            <div className="flex items-center justify-between mb-6">
-              <h3 className={`text-lg font-semibold ${textClass}`}>
-                {editingReview.id ? 'Edit Daily Review' : 'New Daily Review'}
-              </h3>
-              <button onClick={() => { setIsEditing(false); setEditingReview(null) }} className={`p-2 rounded-lg ${theme === 'dark' ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`}>
-                <X size={20} className="text-zinc-400" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-2">Date</label>
-                <input
-                  type="date"
-                  value={editingReview.date_str || ''}
-                  onChange={(e) => setEditingReview({ ...editingReview, date_str: e.target.value })}
-                  className={`w-full p-3 rounded-lg border ${
-                    theme === 'dark' 
-                      ? 'bg-zinc-850 border-zinc-700 text-white' 
-                      : 'bg-white border-zinc-200 text-zinc-900'
-                  }`}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-2">Mood</label>
-                <div className="flex gap-2">
-                  {MOODS.map(mood => {
-                    const Icon = mood.icon
-                    return (
-                      <motion.button
-                        key={mood.value}
-                        onClick={() => setEditingReview({ ...editingReview, mood: mood.value })}
-                        whileHover={{ y: -2, scale: 1.02 }}
-                        whileTap={{ scale: 0.95 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                        className={`flex-1 p-3 rounded-lg border transition-all ${
-                          editingReview.mood === mood.value
-                            ? theme === 'dark'
-                              ? 'border-zinc-400 bg-zinc-800 font-bold'
-                              : 'border-zinc-600 bg-zinc-100 font-bold'
-                            : theme === 'dark' 
-                              ? 'border-zinc-700 bg-zinc-850 hover:bg-zinc-800' 
-                              : 'border-zinc-200 bg-white hover:bg-zinc-50'
-                        }`}
-                      >
-                        <Icon className={`mx-auto mb-1 ${mood.color}`} size={20} />
-                        <span className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>{mood.label}</span>
-                      </motion.button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-2">
-                  Discipline Score: {editingReview.discipline_score}/10
-                </label>
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  value={editingReview.discipline_score || 5}
-                  onChange={(e) => setEditingReview({ ...editingReview, discipline_score: parseInt(e.target.value) })}
-                  className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-200'}`}
-                />
-                <div className="flex justify-between text-xs text-zinc-500 mt-1">
-                  <span>Poor</span>
-                  <span>Perfect</span>
-                </div>
-              </div>
-
-              <div className="md:col-span-2 grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-zinc-400 mb-2">Mistakes</label>
-                  <textarea
-                    value={editingReview.mistakes || ''}
-                    onChange={(e) => setEditingReview({ ...editingReview, mistakes: e.target.value })}
-                    placeholder="What mistakes did you make today?"
-                    rows={4}
-                    className={`w-full p-3 rounded-lg border resize-none ${
-                      theme === 'dark' 
-                        ? 'bg-zinc-850 border-zinc-700 text-white placeholder-zinc-500' 
-                        : 'bg-white border-zinc-200 text-zinc-900 placeholder-zinc-400'
-                    }`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-400 mb-2">Lessons</label>
-                  <textarea
-                    value={editingReview.lessons || ''}
-                    onChange={(e) => setEditingReview({ ...editingReview, lessons: e.target.value })}
-                    placeholder="What did you learn today?"
-                    rows={4}
-                    className={`w-full p-3 rounded-lg border resize-none ${
-                      theme === 'dark' 
-                        ? 'bg-zinc-850 border-zinc-700 text-white placeholder-zinc-500' 
-                        : 'bg-white border-zinc-200 text-zinc-900 placeholder-zinc-400'
-                    }`}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => { setIsEditing(false); setEditingReview(null) }}
-                className="px-4 py-2 text-zinc-400 hover:text-zinc-500 transition-colors"
-              >
-                Cancel
-              </button>
-              <motion.button
-                onClick={handleSave}
-                whileHover={{ scale: 1.02, y: -1 }}
-                whileTap={{ scale: 0.98 }}
-                className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-colors ${
-                  theme === 'dark' 
-                    ? 'bg-zinc-100 hover:bg-white text-zinc-950' 
-                    : 'bg-zinc-900 hover:bg-zinc-850 text-white shadow-sm'
-                }`}
-              >
-                <Save size={18} />
-                <span>Save Review</span>
-              </motion.button>
-            </div>
-          </motion.div>
-        )}
-
         {deleteConfirm.show && (
           <motion.div 
             initial={{ opacity: 0 }}
@@ -614,7 +406,7 @@ export const Journal = ({ theme, onReview }: JournalProps) => {
               
               <div className="flex justify-end gap-3">
                 <button
-                  onClick={() => setDeleteConfirm({ show: false, type: 'trade', id: null, title: '', message: '' })}
+                  onClick={() => setDeleteConfirm({ show: false, id: null, title: '', message: '' })}
                   className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors ${
                     theme === 'dark' 
                       ? 'text-zinc-400 hover:text-white hover:bg-zinc-800' 
@@ -634,117 +426,6 @@ export const Journal = ({ theme, onReview }: JournalProps) => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      <div className="space-y-4 pt-6">
-        <div className="flex items-center justify-between">
-          <h3 className={`text-sm font-black uppercase tracking-widest ${subTextClass}`}>
-            Daily Journal Reflections
-          </h3>
-          <motion.button
-            onClick={handleNewReview}
-            whileHover={{ scale: 1.02, y: -1 }}
-            whileTap={{ scale: 0.98 }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
-              theme === 'dark'
-                ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700'
-                : 'bg-white hover:bg-zinc-50 text-zinc-650 border border-zinc-200'
-            }`}
-          >
-            <Plus size={14} />
-            <span>Write Daily Review</span>
-          </motion.button>
-        </div>
-
-        {reviews.length === 0 ? (
-          <div className={`${bgClass} rounded-xl border p-12 text-center ${
-            theme === 'dark' ? 'border-zinc-800' : 'border-zinc-200'
-          }`}>
-            <BookOpen size={40} className={`mx-auto mb-4 ${subTextClass}`} />
-            <p className={`${subTextClass}`}>No daily reviews recorded yet. Click above to write your first daily reflection!</p>
-          </div>
-        ) : (
-          <motion.div 
-            variants={containerVariants}
-            initial="hidden"
-            animate="show"
-            className="space-y-4"
-          >
-          {reviews.map(review => {
-            const moodData = getMoodData(review.mood)
-            const MoodIcon = moodData.icon
-            return (
-              <motion.div key={review.id} variants={itemVariants} className={`${bgClass} rounded-xl border p-6`}>
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-lg ${cardBgClass}`}>
-                      <Calendar size={20} className={moodData.color} />
-                    </div>
-                    <div>
-                      <div className={`text-lg font-semibold ${textClass}`}>
-                        {formatDate(review.date_str, 'full')}
-                      </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <MoodIcon className={moodData.color} size={14} />
-                        <span className={`text-sm ${subTextClass}`}>{moodData.label}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-right mr-4">
-                      <div className="text-xs text-zinc-500">Discipline Score</div>
-                      <div className={`text-xl font-bold ${
-                        review.discipline_score >= 8 
-                          ? theme === 'dark' ? 'text-emerald-400' : 'text-emerald-700'
-                          : review.discipline_score >= 5 
-                            ? theme === 'dark' ? 'text-blue-400' : 'text-blue-700' 
-                            : theme === 'dark' ? 'text-rose-400' : 'text-rose-700'
-                      }`}>
-                        {review.discipline_score}/10
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => { setEditingReview(review); setIsEditing(true) }}
-                      className={`p-2 rounded-lg ${cardBgClass} transition-colors ${theme === 'dark' ? 'hover:bg-zinc-700' : 'hover:bg-zinc-200'}`}
-                    >
-                      <Edit2 size={16} className="text-zinc-400" />
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(review.id)}
-                      className={`p-2 rounded-lg ${cardBgClass} transition-colors ${theme === 'dark' ? 'hover:bg-rose-500/20' : 'hover:bg-rose-100'}`}
-                    >
-                      <Trash2 size={16} className="text-rose-400" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6">
-                  {review.mistakes && (
-                    <div>
-                      <div className="text-xs font-medium text-zinc-500 mb-2 flex items-center gap-1">
-                        <X size={12} className="text-rose-400" /> Mistakes
-                      </div>
-                      <p className={`text-sm ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-600'}`}>
-                        {review.mistakes}
-                      </p>
-                    </div>
-                  )}
-                  {review.lessons && (
-                    <div>
-                      <div className="text-xs font-medium text-zinc-500 mb-2 flex items-center gap-1">
-                        <BookOpen size={12} className="text-emerald-400" /> Lessons
-                      </div>
-                      <p className={`text-sm ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-600'}`}>
-                        {review.lessons}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )
-          })}
-          </motion.div>
-        )}
-      </div>
     </div>
   )
 }

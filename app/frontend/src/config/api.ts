@@ -9,7 +9,7 @@ export const API_ENDPOINTS = {
   sync: `${API_BASE}/sync`,
   taxSummary: `${API_BASE}/tax/summary`,
   taxExport: `${API_BASE}/tax/export`,
-  reviews: `${API_BASE}/reviews`,
+
   alerts: `${API_BASE}/alerts`,
-  news: `${API_BASE}/news`,
+
 } as const

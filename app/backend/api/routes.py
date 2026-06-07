@@ -10,10 +10,10 @@ import os
 from api.database import get_session
 from api.models import (
     Trade, Fill, TradeEvent, DashboardSummary, APIFill, 
-    DailyReview, PriceAlert, Transaction, EconomicsSummary, EconomicsDaily,
+    PriceAlert, Transaction, EconomicsSummary, EconomicsDaily,
     Screenshot
 )
-from api.client import fetch_fills, fetch_wallet_balance, fetch_positions, fetch_tickers, fetch_news, fetch_rss_news, fetch_ohlc, fetch_benchmark
+from api.client import fetch_fills, fetch_wallet_balance, fetch_positions, fetch_tickers, fetch_ohlc, fetch_benchmark
 from api.ai import analyze_trade
 from api.config import config
 from api.encryption import encrypt_text, decrypt_text
@@ -39,12 +39,7 @@ class TradeUpdateRequest(BaseModel):
 from api.sync import SYNC_STATE, run_sync
 
 
-class DailyReviewRequest(BaseModel):
-    date_str: str
-    mood: str | None = None
-    discipline_score: int | None = Field(default=None, ge=0, le=10)
-    mistakes: str | None = None
-    lessons: str | None = None
+
 
 
 class PriceAlertRequest(BaseModel):
@@ -417,9 +412,12 @@ def update_trade(trade_id: int, updates: TradeUpdateRequest, session: Session = 
     """Update trade with journal details (strategy, emotion, notes, etc)."""
     from api.sync import DB_LOCK
     
+    print(f"[TRADE REVIEW] Saving review for trade_id={trade_id} | fields={list(updates.model_dump(exclude_unset=True).keys())}")
+
     with DB_LOCK:
         trade = session.get(Trade, trade_id)
         if not trade:
+            print(f"[TRADE REVIEW] ERROR: trade_id={trade_id} not found")
             raise HTTPException(status_code=404, detail="Trade not found")
         
         updates_dict = updates.model_dump(exclude_unset=True)
@@ -448,6 +446,7 @@ def update_trade(trade_id: int, updates: TradeUpdateRequest, session: Session = 
         session.commit()
         session.refresh(trade)
     
+    print(f"[TRADE REVIEW] Saved trade_id={trade_id} | symbol={trade.symbol} | discipline={trade.discipline_score}")
     return {"status": "success", "trade_id": trade_id}
 
 
@@ -494,27 +493,34 @@ def delete_trade(trade_id: int, session: Session = Depends(get_session)):
 
     trade = session.get(Trade, trade_id)
     if not trade:
+        print(f"[TRADE DELETE] ERROR: trade_id={trade_id} not found")
         raise HTTPException(status_code=404, detail="Trade not found")
+
+    print(f"[TRADE DELETE] Deleting trade_id={trade_id} | symbol={trade.symbol} | direction={trade.direction} | net_profit={trade.net_profit}")
 
     with DB_LOCK:
         # Delete associated screenshots (files + DB records)
         screenshots = session.exec(select(Screenshot).where(Screenshot.trade_id == trade_id)).all()
+        print(f"[TRADE DELETE] Removing {len(screenshots)} screenshot(s) for trade_id={trade_id}")
         for s in screenshots:
             path_on_disk = s.image_path.lstrip("/")
             if os.path.exists(path_on_disk):
                 try:
                     os.remove(path_on_disk)
+                    print(f"[TRADE DELETE] Deleted screenshot file: {path_on_disk}")
                 except Exception as e:
-                    print(f"Error deleting screenshot file {path_on_disk}: {e}")
+                    print(f"[TRADE DELETE] ERROR deleting screenshot file {path_on_disk}: {e}")
             session.delete(s)
 
         # Delete trade events
         events = session.exec(select(TradeEvent).where(TradeEvent.trade_id == trade_id)).all()
+        print(f"[TRADE DELETE] Removing {len(events)} trade event(s) for trade_id={trade_id}")
         for e in events:
             session.delete(e)
 
         # Disassociate fills (keep raw fill data, remove trade link)
         fills = session.exec(select(Fill).where(Fill.trade_id == trade_id)).all()
+        print(f"[TRADE DELETE] Unlinking {len(fills)} fill(s) from trade_id={trade_id}")
         for f in fills:
             f.trade_id = None
             session.add(f)
@@ -523,6 +529,7 @@ def delete_trade(trade_id: int, session: Session = Depends(get_session)):
         session.delete(trade)
         session.commit()
 
+    print(f"[TRADE DELETE] Successfully deleted trade_id={trade_id}")
     return {"status": "deleted", "trade_id": trade_id}
 
 
@@ -603,23 +610,6 @@ def get_connection_health():
 
 
 
-@router.get("/reviews")
-def get_daily_reviews(session: Session = Depends(get_session)):
-    """Get all daily reviews."""
-    reviews = session.exec(select(DailyReview).order_by(DailyReview.date_str.desc())).all()
-    return [
-        {
-            "id": r.id,
-            "date_str": r.date_str,
-            "mood": r.mood,
-            "discipline_score": r.discipline_score,
-            "mistakes": decrypt_text(r.mistakes),
-            "lessons": decrypt_text(r.lessons)
-        }
-        for r in reviews
-    ]
-
-
 @router.get("/data/reconcile")
 def reconcile_data(session: Session = Depends(get_session)):
     """Verify local trade history matches Delta Exchange records for sync confidence."""
@@ -660,52 +650,6 @@ def reconcile_data(session: Session = Depends(get_session)):
         "quality_score": max(0, min(100, quality_score)),
         "status": status
     }
-
-
-@router.post("/reviews")
-def create_daily_review(review: DailyReviewRequest, session: Session = Depends(get_session)):
-    """Create or update daily review."""
-    from api.sync import DB_LOCK
-    
-    with DB_LOCK:
-        print(f"DEBUG: Processing daily review for date: {review.date_str}")
-        existing = session.exec(
-            select(DailyReview).where(DailyReview.date_str == review.date_str)
-        ).first()
-        
-        if existing:
-            payload = review.model_dump(exclude_unset=True)
-            print(f"DEBUG: Updating existing review ID: {existing.id}")
-            existing.mood = payload.get("mood", existing.mood)
-            existing.discipline_score = payload.get("discipline_score", existing.discipline_score)
-            existing.mistakes = encrypt_text(payload.get("mistakes", decrypt_text(existing.mistakes)))
-            existing.lessons = encrypt_text(payload.get("lessons", decrypt_text(existing.lessons)))
-            session.add(existing)
-            session.commit()
-            return {"status": "updated", "id": existing.id}
-        else:
-            print(f"DEBUG: Creating new daily review")
-            new_review = DailyReview(
-                date_str=review.date_str,
-                mood=review.mood,
-                discipline_score=review.discipline_score,
-                mistakes=encrypt_text(review.mistakes or ""),
-                lessons=encrypt_text(review.lessons or "")
-            )
-            session.add(new_review)
-            session.commit()
-            print(f"DEBUG: Daily review created with ID: {new_review.id}")
-            return {"status": "created", "id": new_review.id}
-
-
-@router.delete("/reviews/{review_id}")
-def delete_daily_review(review_id: int, session: Session = Depends(get_session)):
-    """Delete daily review."""
-    review = session.get(DailyReview, review_id)
-    if review:
-        session.delete(review)
-        session.commit()
-    return {"status": "deleted"}
 
 
 # === Alerts & Notifications ===
@@ -866,50 +810,7 @@ def get_economics(session: Session = Depends(get_session)):
     )
 
 
-@router.get("/news")
-def get_market_news(categories: str = "BTC,ETH,Trading"):
-    """Aggregate market news from CryptoCompare and direct RSS feeds."""
-    import time
-    
-    # 1. Primary Source: CryptoCompare
-    cc_news = fetch_news(categories)
-    formatted_news = []
-    
-    for item in cc_news:
-        formatted_news.append({
-            "id": item.get("id"),
-            "source": item.get("source_info", {}).get("name", "Unknown"),
-            "title": item.get("title"),
-            "url": item.get("url"),
-            "time": item.get("published_on"),
-            "body": item.get("body", "")[:200] + "...",
-            "image": item.get("imageurl"),
-            "type": "ARTICLE"
-        })
-        
-    # 2. Secondary Source: RSS (Fallback/Extra)
-    rss_news = fetch_rss_news()
-    for item in rss_news:
-        # Convert published_parsed to unix timestamp if possible
-        ts = int(time.time())
-        if item["published_on"]:
-            ts = int(time.mktime(item["published_on"]))
-            
-        formatted_news.append({
-            "id": item["id"],
-            "source": item["source"],
-            "title": item["title"],
-            "url": item["url"],
-            "time": ts,
-            "body": item["body"],
-            "image": item["imageurl"],
-            "type": "RSS"
-        })
-        
-    # Sort by time descending
-    formatted_news.sort(key=lambda x: x["time"], reverse=True)
-    
-    return formatted_news[:25] # Return top 25 latest items
+
 
 
 @router.get("/economics/optimization")
